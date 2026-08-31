@@ -1,17 +1,11 @@
-import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { supabase } from '../utils/supabase'
+import { useProfileStatus } from '../hooks/useProfileStatus'
 
 export function RootRedirect() {
-  const [target, setTarget] = useState<'/dashboard' | '/signup' | null>(null)
+  const status = useProfileStatus()
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setTarget(data.session ? '/dashboard' : '/signup')
-    })
-  }, [])
-
-  if (!target) return null
-
-  return <Navigate to={target} replace />
+  if (status.state === 'loading') return null
+  if (status.state === 'anonymous') return <Navigate to="/signup" replace />
+  if (status.state === 'incomplete') return <Navigate to="/onboarding" replace />
+  return <Navigate to="/dashboard" replace />
 }

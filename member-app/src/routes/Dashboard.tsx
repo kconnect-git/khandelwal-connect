@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
-
-type Status = 'checking' | 'authed' | 'anon'
+import { getOwnPerson } from '../lib/people'
+import { getProfileCompletion } from '../lib/profileCompletion'
+import type { Person } from '../types/database'
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const [status, setStatus] = useState<Status>('checking')
-  const [fullName, setFullName] = useState<string | null>(null)
+  const [person, setPerson] = useState<Person | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
@@ -15,22 +15,11 @@ export function Dashboard() {
 
     async function load() {
       const { data: sessionData } = await supabase.auth.getSession()
+      const session = sessionData.session
+      if (!session) return
 
-      if (!sessionData.session) {
-        if (!cancelled) setStatus('anon')
-        return
-      }
-
-      const { data: person } = await supabase
-        .from('people')
-        .select('full_name')
-        .eq('auth_user_id', sessionData.session.user.id)
-        .maybeSingle()
-
-      if (!cancelled) {
-        setFullName(person?.full_name ?? null)
-        setStatus('authed')
-      }
+      const loaded = await getOwnPerson(session.user.id)
+      if (!cancelled) setPerson(loaded)
     }
 
     load()
@@ -45,26 +34,54 @@ export function Dashboard() {
     navigate('/signup', { replace: true })
   }
 
-  if (status === 'checking') return null
-  if (status === 'anon') return <Navigate to="/signup" replace />
+  const completion = person ? getProfileCompletion(person) : null
 
   return (
     <div className="flex-1 flex flex-col items-start gap-4 px-5 py-10 max-w-2xl mx-auto w-full">
       <h1 className="font-heading text-2xl font-semibold">
-        Welcome{fullName ? `, ${fullName}` : ''}
+        Welcome{person?.full_name ? `, ${person.full_name}` : ''}
       </h1>
       <p className="text-[var(--color-text-muted)]">
         Your dashboard is coming together — family tree, directory, events, and more will land
         here in the next phases.
       </p>
-      <button
-        type="button"
-        onClick={handleLogout}
-        disabled={loggingOut}
-        className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] disabled:opacity-60 transition-colors"
-      >
-        {loggingOut ? 'Logging out…' : 'Log out'}
-      </button>
+
+      {completion && (
+        <div className="w-full flex flex-col gap-2">
+          <p className="text-sm text-[var(--color-text-muted)]">
+            {completion.completed}/{completion.total} fields · {completion.percent}% complete
+          </p>
+          <div className="w-full h-2 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden">
+            <div
+              className="h-full bg-[var(--color-accent)]"
+              style={{ width: `${completion.percent}%` }}
+            />
+          </div>
+          {completion.missingNotYetEditable.length > 0 && (
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {completion.missingNotYetEditable.map((f) => f.label).join(', ')} arrive in a later
+              update.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        <Link
+          to="/profile/edit"
+          className="rounded-lg bg-[var(--color-accent)] text-white font-medium px-4 py-2 text-sm hover:bg-[var(--color-accent-hover)] transition-colors"
+        >
+          Edit profile
+        </Link>
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] disabled:opacity-60 transition-colors"
+        >
+          {loggingOut ? 'Logging out…' : 'Log out'}
+        </button>
+      </div>
     </div>
   )
 }

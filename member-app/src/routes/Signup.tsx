@@ -4,7 +4,6 @@ import { supabase } from '../utils/supabase'
 
 export function Signup() {
   const navigate = useNavigate()
-  const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -24,7 +23,7 @@ export function Signup() {
         return
       }
 
-      navigate('/verify', { state: { email, fullName } })
+      navigate('/verify', { state: { email } })
     } catch (err) {
       console.error('[signup] unexpected error', err)
       setError(err instanceof Error ? err.message : 'Something went wrong sending the code.')
@@ -38,19 +37,8 @@ export function Signup() {
       <form onSubmit={handleSubmit} className="w-full max-w-sm flex flex-col gap-4">
         <h1 className="font-heading text-2xl font-semibold">Join Khandelwal Connect</h1>
         <p className="text-[var(--color-text-muted)]">
-          Enter your name and email to get a one-time code.
+          Enter your email to get a one-time code.
         </p>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm text-[var(--color-text-muted)]">Full name</span>
-          <input
-            type="text"
-            required
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 outline-none focus:border-[var(--color-accent)]"
-          />
-        </label>
 
         <label className="flex flex-col gap-1.5">
           <span className="text-sm text-[var(--color-text-muted)]">Email</span>

@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
+import { createOwnPerson, getOwnPerson } from '../lib/people'
 
-type LocationState = { email: string; fullName: string }
+type LocationState = { email: string }
 
 const RESEND_COOLDOWN_SECONDS = 30
 
@@ -28,7 +29,7 @@ export function VerifyOtp() {
     return <Navigate to="/signup" replace />
   }
 
-  const { email, fullName } = state
+  const { email } = state
 
   async function handleResend() {
     setResending(true)
@@ -74,19 +75,15 @@ export function VerifyOtp() {
         return
       }
 
-      console.log('[verify] inserting people row for', data.session.user.id)
-      const { error: insertError } = await supabase.from('people').insert({
-        auth_user_id: data.session.user.id,
-        full_name: fullName,
-      })
-      console.log('[verify] insert result', { insertError })
-
-      if (insertError) {
-        setError(insertError.message)
-        return
+      const existing = await getOwnPerson(data.session.user.id)
+      if (!existing) {
+        // full_name is collected in the onboarding wizard's first step, not
+        // at signup, so this row starts blank and the wizard fills it in.
+        console.log('[verify] inserting people row for', data.session.user.id)
+        await createOwnPerson(data.session.user.id, '')
       }
 
-      navigate('/dashboard', { replace: true })
+      navigate('/onboarding', { replace: true })
     } catch (err) {
       console.error('[verify] unexpected verify error', err)
       setError(err instanceof Error ? err.message : 'Something went wrong verifying the code.')
