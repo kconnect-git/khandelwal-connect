@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useProfileStatus } from '../../hooks/useProfileStatus'
+import { ProfileLoadError } from './ProfileLoadError'
 
 type AuthGateProps = {
   children: ReactNode
@@ -11,6 +12,9 @@ export function AuthGate({ children, requireComplete = false }: AuthGateProps) {
   const status = useProfileStatus()
 
   if (status.state === 'loading') return null
+  if (status.state === 'error') {
+    return <ProfileLoadError message={status.message} retry={status.retry} />
+  }
   if (status.state === 'anonymous') return <Navigate to="/signup" replace />
   if (status.state === 'incomplete' && requireComplete) {
     return <Navigate to="/onboarding" replace />

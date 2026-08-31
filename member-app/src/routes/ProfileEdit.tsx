@@ -14,6 +14,7 @@ import { validateStep } from './wizard/validation'
 import { StepPersonal } from './wizard/StepPersonal'
 import { StepLocation } from './wizard/StepLocation'
 import { StepGotraBackground } from './wizard/StepGotraBackground'
+import { ProfileLoadError } from '../components/guards/ProfileLoadError'
 
 export function ProfileEdit() {
   const [person, setPerson] = useState<Person | null>(null)
@@ -21,27 +22,49 @@ export function ProfileEdit() {
   const [error, setError] = useState<string | null>(null)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
 
     async function load() {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const session = sessionData.session
-      if (!session) return
+      try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const session = sessionData.session
+        if (!session) return
 
-      const loaded = await getOwnPerson(session.user.id)
-      if (cancelled || !loaded) return
+        const loaded = await getOwnPerson(session.user.id)
+        if (cancelled || !loaded) return
 
-      setPerson(loaded)
-      setForm(personToFormValues(loaded))
+        setPerson(loaded)
+        setForm(personToFormValues(loaded))
+      } catch (err) {
+        if (cancelled) return
+        console.error('[ProfileEdit] failed to load profile', err)
+        setLoadError(
+          err instanceof Error ? err.message : 'Something went wrong loading your profile.',
+        )
+      }
     }
 
     load()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [loadAttempt])
+
+  if (loadError) {
+    return (
+      <ProfileLoadError
+        message={loadError}
+        retry={() => {
+          setLoadError(null)
+          setLoadAttempt((a) => a + 1)
+        }}
+      />
+    )
+  }
 
   if (!person || !form) return null
 

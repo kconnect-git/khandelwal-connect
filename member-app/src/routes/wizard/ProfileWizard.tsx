@@ -14,6 +14,7 @@ import { STEP_FIELDS, stepFieldsMissing, validateStep, type WizardStep } from '.
 import { StepPersonal } from './StepPersonal'
 import { StepLocation } from './StepLocation'
 import { StepGotraBackground } from './StepGotraBackground'
+import { ProfileLoadError } from '../../components/guards/ProfileLoadError'
 
 const BLANK_FORM: PersonFormValues = {
   full_name: '',
@@ -48,7 +49,7 @@ function firstIncompleteStep(form: PersonFormValues): WizardStep {
   return 3
 }
 
-type Status = 'loading' | 'ready' | 'anonymous' | 'done'
+type Status = 'loading' | 'ready' | 'anonymous' | 'done' | 'error'
 
 export function ProfileWizard() {
   const navigate = useNavigate()
@@ -58,45 +59,67 @@ export function ProfileWizard() {
   const [form, setForm] = useState<PersonFormValues>(BLANK_FORM)
   const [step, setStep] = useState<WizardStep>(1)
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
 
     async function load() {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const session = sessionData.session
+      try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const session = sessionData.session
 
-      if (!session) {
-        if (!cancelled) setStatus('anonymous')
-        return
+        if (!session) {
+          if (!cancelled) setStatus('anonymous')
+          return
+        }
+
+        const person = await getOwnPerson(session.user.id)
+        if (cancelled) return
+
+        if (person && isWizardComplete(person)) {
+          setStatus('done')
+          return
+        }
+
+        const seeded = person ? personToFormValues(person) : BLANK_FORM
+        setAuthUserId(session.user.id)
+        setExistingPerson(person)
+        setForm(seeded)
+        setStep(firstIncompleteStep(seeded))
+        setStatus('ready')
+      } catch (err) {
+        if (cancelled) return
+        console.error('[ProfileWizard] failed to load profile', err)
+        setLoadError(
+          err instanceof Error ? err.message : 'Something went wrong loading your profile.',
+        )
+        setStatus('error')
       }
-
-      const person = await getOwnPerson(session.user.id)
-      if (cancelled) return
-
-      if (person && isWizardComplete(person)) {
-        setStatus('done')
-        return
-      }
-
-      const seeded = person ? personToFormValues(person) : BLANK_FORM
-      setAuthUserId(session.user.id)
-      setExistingPerson(person)
-      setForm(seeded)
-      setStep(firstIncompleteStep(seeded))
-      setStatus('ready')
     }
 
     load()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [loadAttempt])
 
   if (status === 'loading') return null
   if (status === 'anonymous') return <Navigate to="/signup" replace />
   if (status === 'done') return <Navigate to="/dashboard" replace />
+  if (status === 'error') {
+    return (
+      <ProfileLoadError
+        message={loadError ?? 'Something went wrong loading your profile.'}
+        retry={() => {
+          setStatus('loading')
+          setLoadAttempt((a) => a + 1)
+        }}
+      />
+    )
+  }
 
   function handleChange(patch: Partial<PersonFormValues>) {
     setForm((prev) => ({ ...prev, ...patch }))

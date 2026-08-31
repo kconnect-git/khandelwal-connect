@@ -43,12 +43,20 @@ export async function getOwnPerson(authUserId: string): Promise<Person | null> {
   // No unique constraint exists on auth_user_id, so more than one row can
   // exist for the same account (e.g. from re-verifying before this table
   // had a duplicate check). Order + take the first rather than
-  // .maybeSingle(), which throws on >1 row.
+  // .maybeSingle(), which throws on >1 row. `id` is a required tiebreaker:
+  // rows inserted close together can share the same created_at timestamp,
+  // and ORDER BY with no tiebreak on a tied column is non-deterministic in
+  // Postgres -- without it, two calls to this exact query can return two
+  // different rows for the same account, which is exactly what caused an
+  // infinite AuthGate/ProfileWizard redirect loop on a duplicate-polluted
+  // test account (one query call saw an incomplete row, the next saw a
+  // complete one).
   const { data, error } = await supabase
     .from('people')
     .select('*')
     .eq('auth_user_id', authUserId)
     .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
     .limit(1)
 
   if (error) throw error

@@ -33,7 +33,7 @@ export default function App() {
             <Route
               path="/onboarding"
               element={
-                <AuthGate>
+                <AuthGate key="onboarding">
                   <ProfileWizard />
                 </AuthGate>
               }
@@ -41,7 +41,7 @@ export default function App() {
             <Route
               path="/dashboard"
               element={
-                <AuthGate requireComplete>
+                <AuthGate key="dashboard" requireComplete>
                   <Dashboard />
                 </AuthGate>
               }
@@ -49,7 +49,7 @@ export default function App() {
             <Route
               path="/profile/edit"
               element={
-                <AuthGate requireComplete>
+                <AuthGate key="profile-edit" requireComplete>
                   <ProfileEdit />
                 </AuthGate>
               }

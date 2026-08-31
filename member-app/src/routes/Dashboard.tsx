@@ -14,12 +14,16 @@ export function Dashboard() {
     let cancelled = false
 
     async function load() {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const session = sessionData.session
-      if (!session) return
+      try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const session = sessionData.session
+        if (!session) return
 
-      const loaded = await getOwnPerson(session.user.id)
-      if (!cancelled) setPerson(loaded)
+        const loaded = await getOwnPerson(session.user.id)
+        if (!cancelled) setPerson(loaded)
+      } catch (err) {
+        console.error('[Dashboard] failed to load profile', err)
+      }
     }
 
     load()
