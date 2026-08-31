@@ -14,16 +14,23 @@ export function Signup() {
     setError(null)
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithOtp({ email })
+    try {
+      console.log('[signup] requesting OTP for', email)
+      const { data, error } = await supabase.auth.signInWithOtp({ email })
+      console.log('[signup] signInWithOtp result', { data, error })
 
-    setLoading(false)
+      if (error) {
+        setError(error.message)
+        return
+      }
 
-    if (error) {
-      setError(error.message)
-      return
+      navigate('/verify', { state: { email, fullName } })
+    } catch (err) {
+      console.error('[signup] unexpected error', err)
+      setError(err instanceof Error ? err.message : 'Something went wrong sending the code.')
+    } finally {
+      setLoading(false)
     }
-
-    navigate('/verify', { state: { email, fullName } })
   }
 
   return (

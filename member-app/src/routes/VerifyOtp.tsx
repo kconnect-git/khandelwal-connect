@@ -35,17 +35,24 @@ export function VerifyOtp() {
     setResendMessage(null)
     setError(null)
 
-    const { error: resendError } = await supabase.auth.signInWithOtp({ email })
+    try {
+      console.log('[verify] resending OTP for', email)
+      const { data, error: resendError } = await supabase.auth.signInWithOtp({ email })
+      console.log('[verify] resend result', { data, resendError })
 
-    setResending(false)
+      if (resendError) {
+        setError(resendError.message)
+        return
+      }
 
-    if (resendError) {
-      setError(resendError.message)
-      return
+      setResendMessage('New code sent.')
+      setCooldown(RESEND_COOLDOWN_SECONDS)
+    } catch (err) {
+      console.error('[verify] unexpected resend error', err)
+      setError(err instanceof Error ? err.message : 'Something went wrong resending the code.')
+    } finally {
+      setResending(false)
     }
-
-    setResendMessage('New code sent.')
-    setCooldown(RESEND_COOLDOWN_SECONDS)
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -53,31 +60,39 @@ export function VerifyOtp() {
     setError(null)
     setLoading(true)
 
-    const { data, error: verifyError } = await supabase.auth.verifyOtp({
-      email,
-      token: code,
-      type: 'email',
-    })
+    try {
+      console.log('[verify] verifying OTP for', email)
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+        email,
+        token: code,
+        type: 'email',
+      })
+      console.log('[verify] verifyOtp result', { data, verifyError })
 
-    if (verifyError || !data.session) {
+      if (verifyError || !data.session) {
+        setError(verifyError?.message ?? 'Could not verify code.')
+        return
+      }
+
+      console.log('[verify] inserting people row for', data.session.user.id)
+      const { error: insertError } = await supabase.from('people').insert({
+        auth_user_id: data.session.user.id,
+        full_name: fullName,
+      })
+      console.log('[verify] insert result', { insertError })
+
+      if (insertError) {
+        setError(insertError.message)
+        return
+      }
+
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      console.error('[verify] unexpected verify error', err)
+      setError(err instanceof Error ? err.message : 'Something went wrong verifying the code.')
+    } finally {
       setLoading(false)
-      setError(verifyError?.message ?? 'Could not verify code.')
-      return
     }
-
-    const { error: insertError } = await supabase.from('people').insert({
-      auth_user_id: data.session.user.id,
-      full_name: fullName,
-    })
-
-    setLoading(false)
-
-    if (insertError) {
-      setError(insertError.message)
-      return
-    }
-
-    navigate('/dashboard', { replace: true })
   }
 
   return (
