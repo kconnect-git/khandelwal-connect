@@ -85,6 +85,8 @@ Discovered while testing this phase, relevant to any future feature that emails/
 
 This means: **every current internal link that matters for a fresh, unauthenticated browser hit should point at `/`, not a deep path.** If Phase 4 (events) or Phase 6 (matrimony) want to email a direct link to a specific event or interest — a deep path — this gap will need a real fix (the `vercel.json` rewrite is the straightforward one) rather than relying on the root-redirect workaround again.
 
+> **Update (Phase 3a):** fixed for good — `member-app/vercel.json` now carries the catch-all rewrite to `/index.html`, so hard navigations/refreshes on any path work on Vercel and deep-link emails are safe going forward. The guidance above is historical.
+
 ---
 
 ## 5. Key architectural patterns to know before extending

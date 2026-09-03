@@ -6,7 +6,7 @@ This document captures all product, design, and technical decisions made during 
 
 ## 0. Current status (read this first)
 
-**Phase 0, Phase 1, and Phase 2 are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`** and then **`phase-2-summary.md`** before starting Phase 3. This section is a short pointer, not the source of truth for current state.
+**Phase 0, Phase 1, Phase 2, and Phase 3a are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, and **`phase-3a-summary.md`** before starting Phase 3b. This section is a short pointer, not the source of truth for current state.
 
 Phase 0 (backend foundation):
 - ✅ Supabase project created (region: Singapore), email auth + Resend SMTP, OTP email template edited to show the 6-digit code
@@ -30,7 +30,16 @@ Phase 2 (family details — **a deliberately simplified version of the original 
 - ✅ Invite-by-email for relatives who aren't registered yet (`send-family-invite` Edge Function via Resend) — a plain notification email, no auth account pre-created, nothing tracked
 - ❌ **Still not built** (deferred to a later phase): siblings, grandparents, a graph/visualization, RLS policies for reading other members' full rows, consent-based linking between two existing members' own rows. See `phase-2-summary.md` for why this was cut down and what a real family tree would still need.
 
-**Immediate next step:** read `phase-1-summary.md` and `phase-2-summary.md`, then plan Phase 3 (directory & business, Section 9).
+Phase 3a (directory & member profiles — Phase 3 was split into 3a/3b during planning):
+- ✅ Member directory (`/directory`): search, state/city/gotra filter chips, pagination, member count stat — all via new `SECURITY DEFINER` RPCs; `people`'s self-only RLS untouched
+- ✅ Member profile screen (`/members/:id`, design-doc layout) with tiered field visibility; mobile number shown to logged-in members with Call/WhatsApp actions
+- ✅ Profile photo upload (canvas re-encode, EXIF stripped client-side), shared `Avatar` component everywhere
+- ✅ App navigation: mobile bottom tabs + desktop header links (Home · Directory · Family)
+- ✅ Dashboard redesigned to the design-doc home layout (accent membership card with member code, stat tiles)
+- ✅ Fixes: header-staleness (`ProfileRefreshContext`), SPA refresh-404 on Vercel (`vercel.json` rewrite — supersedes `phase-2-summary.md` §4's workaround), father-search gotra bug
+- ❌ **Still not built**: business profiles (→ Phase 3b), profession/mandal filters, "hide my number" toggle. See `phase-3a-summary.md`.
+
+**Immediate next step:** read the three phase summaries (especially `phase-3a-summary.md` §6–7), then plan Phase 3b (business profiles).
 
 ---
 
@@ -220,11 +229,17 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 - See `phase-2-summary.md` for the full account of what shipped and why the scope changed
 - **Exit criteria (revised)**: member can record their immediate family's names/member-codes and invite unregistered relatives by email — met
 
-### Phase 3 — Directory & business (Week 5)
-- Directory list with search + filter chips (location/gotra/profession/mandal)
-- Member profile screen
-- Business profile creation + directory linking
-- **Exit criteria**: members can find each other and see business listings
+### Phase 3 — Directory & business (Week 5) — split into 3a (done) / 3b (next)
+**3a — directory & member profiles, done:**
+- [x] Directory list with search + filter chips (location/gotra — profession/mandal deferred, fields don't exist yet)
+- [x] Member profile screen (incl. own-profile view, contact actions, tiered field visibility)
+- [x] *(added, not originally planned)* profile photo upload, app-wide navigation, dashboard redesign, header-refresh + SPA-404 fixes
+- **Exit criteria (3a)**: members can find each other and view profiles — met. Full details in `phase-3a-summary.md`
+
+**3b — business profiles, not started:**
+- [ ] Business profile creation (RLS policies for `businesses` must be decided first — see `phase-3a-summary.md` §7)
+- [ ] Directory linking (profession on member profiles, business listings/filter in directory)
+- **Exit criteria (3b)**: members can see business listings
 
 ### Phase 4 — Events (Week 6)
 - Events list (Upcoming/Registered/Past)
@@ -259,7 +274,9 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 
 ## 10. Open decisions still to make
 
-- Exact RLS policy wording for `people` table visibility (self/relations only vs. all verified members)
+- ~~Exact RLS policy wording for `people` table visibility~~ — **decided in Phase 3a**: `people` stays self-only; cross-member reads go through `SECURITY DEFINER` RPCs with fixed column tiers (see `phase-3a-summary.md` §1–2)
+- Access model for `businesses` in Phase 3b: real RLS policies vs. the tiered-RPC pattern (see `phase-3a-summary.md` §5/§7)
+- Per-user "hide my number" toggle — planned follow-up to Phase 3a's decision to print mobile numbers on profiles
 - Whether dues/payments launch in v1 or a later phase
 - Self-hosting fonts vs. CDN (deferred until design is locked)
 - Team size/timeline — the sprint plan above assumes 1–2 developers; adjust phase lengths accordingly
