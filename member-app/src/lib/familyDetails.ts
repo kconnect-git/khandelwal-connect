@@ -1,3 +1,4 @@
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../utils/supabase'
 import type { ChildRow } from '../types/database'
 
@@ -87,4 +88,30 @@ export async function updateChild(
 export async function removeChild(childRowId: string): Promise<void> {
   const { error } = await supabase.from('children').delete().eq('id', childRowId)
   if (error) throw error
+}
+
+export type InviteSlot = FamilySlot | 'child'
+
+export async function sendFamilyInvite(params: { slot: InviteSlot; email: string }): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('send-family-invite', {
+    body: { slot: params.slot, email: params.email },
+  })
+
+  if (error) {
+    // supabase-js collapses any non-2xx response into a generic
+    // "Edge Function returned a non-2xx status code" message -- the actual
+    // reason is in the response body, reachable via error.context.
+    if (error instanceof FunctionsHttpError) {
+      let message = error.message
+      try {
+        const body = await error.context.json()
+        if (body?.error) message = body.error
+      } catch {
+        // response wasn't JSON -- fall back to the generic message
+      }
+      throw new Error(message)
+    }
+    throw error
+  }
+  if (data?.error) throw new Error(data.error)
 }

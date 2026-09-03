@@ -1,6 +1,6 @@
 type TextFieldProps = {
-  label: string
-  type?: 'text' | 'date' | 'tel'
+  label?: string
+  type?: 'text' | 'date' | 'tel' | 'email'
   value: string
   onChange: (value: string) => void
   required?: boolean
@@ -26,7 +26,7 @@ export function TextField({
 }: TextFieldProps) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-sm text-[var(--color-text-muted)]">{label}</span>
+      {label && <span className="text-sm text-[var(--color-text-muted)]">{label}</span>}
       <div className="flex items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus-within:border-[var(--color-accent)]">
         {prefix && (
           <span className="pl-3 py-2.5 text-[var(--color-text-muted)] select-none">{prefix}</span>

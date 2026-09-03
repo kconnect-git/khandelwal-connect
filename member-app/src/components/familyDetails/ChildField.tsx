@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { RelationSearchInput } from './RelationSearchInput'
+import { InviteControl } from './InviteControl'
 import { updateChild, removeChild, type ChildRecord } from '../../lib/familyDetails'
 
 type ChildFieldProps = {
@@ -14,6 +15,7 @@ export function ChildField({ child, onRemoved }: ChildFieldProps) {
   const [removing, setRemoving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [notFound, setNotFound] = useState(false)
 
   async function handleSave() {
     setError(null)
@@ -48,15 +50,18 @@ export function ChildField({ child, onRemoved }: ChildFieldProps) {
         onNameChange={(v) => {
           setName(v)
           setSaved(false)
+          setNotFound(false)
         }}
         onMemberCodeChange={(v) => {
           setMemberCode(v)
           setSaved(false)
+          setNotFound(false)
         }}
+        onSearched={(results) => setNotFound(results.length === 0)}
       />
       {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}
       {saved && !error && <p className="text-sm text-[var(--color-text-muted)]">Saved.</p>}
-      <div className="flex gap-3">
+      <div className="flex items-start gap-3">
         <button
           type="button"
           onClick={handleSave}
@@ -65,6 +70,7 @@ export function ChildField({ child, onRemoved }: ChildFieldProps) {
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
+        {notFound && memberCode.trim().length === 0 && <InviteControl slot="child" />}
         <button
           type="button"
           onClick={handleRemove}

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { RelationSearchInput } from './RelationSearchInput'
+import { InviteControl } from './InviteControl'
 import { saveFamilyRelation, type FamilySlot } from '../../lib/familyDetails'
 
 type RelationFieldProps = {
@@ -24,6 +25,7 @@ export function RelationField({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [notFound, setNotFound] = useState(false)
 
   async function handleSave() {
     setError(null)
@@ -48,24 +50,30 @@ export function RelationField({
         onNameChange={(v) => {
           setName(v)
           setSaved(false)
+          setNotFound(false)
         }}
         onMemberCodeChange={(v) => {
           setMemberCode(v)
           setSaved(false)
+          setNotFound(false)
         }}
+        onSearched={(results) => setNotFound(results.length === 0)}
         gotraHint={gotraHint}
         nativePlaceHint={nativePlaceHint}
       />
       {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}
       {saved && !error && <p className="text-sm text-[var(--color-text-muted)]">Saved.</p>}
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={saving || name.trim().length === 0}
-        className="self-start rounded-lg bg-[var(--color-accent)] text-white font-medium px-4 py-2 text-sm hover:bg-[var(--color-accent-hover)] disabled:opacity-60 transition-colors"
-      >
-        {saving ? 'Saving…' : 'Save'}
-      </button>
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || name.trim().length === 0}
+          className="rounded-lg bg-[var(--color-accent)] text-white font-medium px-4 py-2 text-sm hover:bg-[var(--color-accent-hover)] disabled:opacity-60 transition-colors"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {notFound && memberCode.trim().length === 0 && <InviteControl slot={slot} />}
+      </div>
     </div>
   )
 }

@@ -9,6 +9,9 @@ type RelationSearchInputProps = {
   onMemberCodeChange: (value: string) => void
   gotraHint?: string
   nativePlaceHint?: string
+  /** Called after a search completes, with whatever it found (possibly
+   * empty) -- lets the parent know when it's safe to offer "Invite". */
+  onSearched?: (results: MemberCandidate[]) => void
 }
 
 /** Name + member-ID inputs with a "search registered members" affordance.
@@ -21,6 +24,7 @@ export function RelationSearchInput({
   onMemberCodeChange,
   gotraHint,
   nativePlaceHint,
+  onSearched,
 }: RelationSearchInputProps) {
   const [searching, setSearching] = useState(false)
   const [results, setResults] = useState<MemberCandidate[] | null>(null)
@@ -42,6 +46,7 @@ export function RelationSearchInput({
         nativePlace: nativePlaceHint,
       })
       setResults(found)
+      onSearched?.(found)
     } catch (err) {
       setSearchError(err instanceof Error ? err.message : 'Search failed.')
     } finally {

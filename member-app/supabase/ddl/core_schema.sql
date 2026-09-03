@@ -413,3 +413,8 @@ revoke all on function add_child(text, text) from public;
 grant execute on function add_child(text, text) to authenticated;
 revoke all on function update_child(uuid, text, text) from public;
 grant execute on function update_child(uuid, text, text) to authenticated;
+
+-- Family invites (a "your father/spouse/etc. was invited" notification
+-- email) are sent by the send-family-invite Edge Function via Resend
+-- directly -- a plain, untracked email. No auth account is created and
+-- nothing about the invite is persisted in the database.
