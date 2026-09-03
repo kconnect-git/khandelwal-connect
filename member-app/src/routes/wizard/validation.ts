@@ -64,3 +64,13 @@ export function validateStep(step: WizardStep, form: PersonFormValues): string |
   if (!isFilled(form.education)) return 'Education is required.'
   return null
 }
+
+/** Edit-profile only (not a wizard step). Occupation itself is optional;
+ * once it's 'Job', the three job sub-fields become required. */
+export function validateOccupation(form: PersonFormValues): string | null {
+  if (form.occupation_type !== 'Job') return null
+  if (!isFilled(form.job_title)) return 'Job title is required when your occupation is Job.'
+  if (!isFilled(form.company_name)) return 'Company is required when your occupation is Job.'
+  if (!isFilled(form.job_location)) return 'Work location is required when your occupation is Job.'
+  return null
+}

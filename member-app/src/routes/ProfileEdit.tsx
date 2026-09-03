@@ -9,12 +9,14 @@ import {
   type PersonFormValues,
 } from '../lib/people'
 import { getProfileCompletion } from '../lib/profileCompletion'
+import { getFamilyNameCompletionFlags, type FamilyNameCompletionFlags } from '../lib/familyDetails'
 import { removeProfilePhoto, uploadProfilePhoto } from '../lib/profilePhoto'
 import type { Person } from '../types/database'
-import { validateStep } from './wizard/validation'
+import { validateOccupation, validateStep } from './wizard/validation'
 import { StepPersonal } from './wizard/StepPersonal'
 import { StepLocation } from './wizard/StepLocation'
 import { StepGotraBackground } from './wizard/StepGotraBackground'
+import { OccupationFields } from '../components/form/OccupationFields'
 import { ProfileLoadError } from '../components/guards/ProfileLoadError'
 import { Avatar } from '../components/Avatar'
 import { useProfileRefresh } from '../context/ProfileRefreshContext'
@@ -32,6 +34,10 @@ export function ProfileEdit() {
   const [photoBusy, setPhotoBusy] = useState(false)
   const [photoError, setPhotoError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // father_name/mother_name/spouse_name moved off `people` into
+  // family_relations (post-3b); fetched separately just to feed the
+  // completion count below, same as Dashboard.tsx.
+  const [familyFlags, setFamilyFlags] = useState<FamilyNameCompletionFlags | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -45,9 +51,13 @@ export function ProfileEdit() {
         const loaded = await getOwnPerson(session.user.id)
         if (cancelled || !loaded) return
 
+        const flags = await getFamilyNameCompletionFlags(loaded.id)
+        if (cancelled) return
+
         setAuthUserId(session.user.id)
         setPerson(loaded)
         setForm(personToFormValues(loaded))
+        setFamilyFlags(flags)
       } catch (err) {
         if (cancelled) return
         console.error('[ProfileEdit] failed to load profile', err)
@@ -75,7 +85,7 @@ export function ProfileEdit() {
     )
   }
 
-  if (!person || !form) return null
+  if (!person || !form || !familyFlags) return null
 
   function handleChange(patch: Partial<PersonFormValues>) {
     setForm((prev) => (prev ? { ...prev, ...patch } : prev))
@@ -123,11 +133,23 @@ export function ProfileEdit() {
         return
       }
     }
+    const occupationMessage = validateOccupation(form)
+    if (occupationMessage) {
+      setError(occupationMessage)
+      return
+    }
+
+    // Job sub-fields only make sense for occupation 'Job' -- clear any
+    // stale values if the member switched to something else.
+    const toSave: PersonFormValues =
+      form.occupation_type === 'Job'
+        ? form
+        : { ...form, job_title: '', company_name: '', job_location: '' }
 
     setError(null)
     setSaving(true)
     try {
-      const updated = await updateOwnPerson(person.id, formValuesToPatch(form))
+      const updated = await updateOwnPerson(person.id, formValuesToPatch(toSave))
       setPerson(updated)
       setForm(personToFormValues(updated))
       setSavedMessage('Saved.')
@@ -139,7 +161,7 @@ export function ProfileEdit() {
     }
   }
 
-  const completion = getProfileCompletion(person)
+  const completion = getProfileCompletion({ ...person, ...familyFlags })
 
   return (
     <div className="flex-1 flex flex-col items-start gap-6 px-5 py-10 max-w-2xl mx-auto w-full">
@@ -205,6 +227,7 @@ export function ProfileEdit() {
         <StepPersonal value={form} onChange={handleChange} />
         <StepLocation value={form} onChange={handleChange} />
         <StepGotraBackground value={form} onChange={handleChange} />
+        <OccupationFields value={form} onChange={handleChange} />
       </div>
 
       {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}

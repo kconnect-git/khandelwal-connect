@@ -1,13 +1,20 @@
 import { useState } from 'react'
 import { RelationSearchInput } from './RelationSearchInput'
+import { RelativeContactFields } from './RelativeContactFields'
 import { InviteControl } from './InviteControl'
-import { saveFamilyRelation, type FamilySlot } from '../../lib/familyDetails'
+import {
+  saveFamilyRelation,
+  validateRelativeContact,
+  type FamilySlot,
+  type RelativeContact,
+} from '../../lib/familyDetails'
 
 type RelationFieldProps = {
   label: string
   slot: FamilySlot
   initialName: string
   initialMemberCode: string
+  initialContact: RelativeContact
   gotraHint?: string
   nativePlaceHint?: string
 }
@@ -17,11 +24,13 @@ export function RelationField({
   slot,
   initialName,
   initialMemberCode,
+  initialContact,
   gotraHint,
   nativePlaceHint,
 }: RelationFieldProps) {
   const [name, setName] = useState(initialName)
   const [memberCode, setMemberCode] = useState(initialMemberCode)
+  const [contact, setContact] = useState<RelativeContact>(initialContact)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -30,9 +39,16 @@ export function RelationField({
   async function handleSave() {
     setError(null)
     setSaved(false)
+
+    const contactError = validateRelativeContact(contact)
+    if (contactError) {
+      setError(contactError)
+      return
+    }
+
     setSaving(true)
     try {
-      await saveFamilyRelation(slot, name.trim(), memberCode.trim() || null)
+      await saveFamilyRelation(slot, name.trim(), memberCode.trim() || null, contact)
       setSaved(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong saving this.')
@@ -58,8 +74,19 @@ export function RelationField({
           setNotFound(false)
         }}
         onSearched={(results) => setNotFound(results.length === 0)}
+        onMobileNumberFound={(mobileNumber) => {
+          setContact((prev) => ({ ...prev, mobileNumber }))
+          setSaved(false)
+        }}
         gotraHint={gotraHint}
         nativePlaceHint={nativePlaceHint}
+      />
+      <RelativeContactFields
+        value={contact}
+        onChange={(v) => {
+          setContact(v)
+          setSaved(false)
+        }}
       />
       {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}
       {saved && !error && <p className="text-sm text-[var(--color-text-muted)]">Saved.</p>}

@@ -10,7 +10,7 @@ const JPEG_QUALITY = 0.85
 // edge, per the upload plan in the project context doc) and drops all EXIF
 // metadata -- phones embed GPS coordinates in photos, which must not end up
 // on a public-read bucket.
-async function compressImage(file: File): Promise<Blob> {
+export async function compressImage(file: File): Promise<Blob> {
   const objectUrl = URL.createObjectURL(file)
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {

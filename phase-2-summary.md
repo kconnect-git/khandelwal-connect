@@ -19,6 +19,8 @@ What shipped instead: a **Family details** screen where a member records their f
 
 ## 2. Current schema additions
 
+> **Superseded (post-3b):** the flat `people` columns below (`father_name`, `father_member_code`, … all 30 of them across the 6 slots) were normalized into a `family_relations` table in a post-3b database optimization pass. The columns still physically exist on `people` as frozen historical data — nothing writes to them anymore — but the app reads/writes exclusively through `family_relations` now. This section is kept for history; see `phase-3b-summary.md` §6 for the current shape.
+
 Canonical reference: `member-app/supabase/ddl/core_schema.sql` / `enable_rls.sql`. Migration history for this phase: `0006` through `0009`, all applied.
 
 ```sql

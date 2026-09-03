@@ -16,6 +16,12 @@ export type PersonFormValues = {
   gotra: string
   marital_status: string
   education: string
+  // Edit-profile only (never in the wizard): fixed occupation select, plus
+  // job sub-fields that only apply when occupation_type === 'Job'.
+  occupation_type: string
+  job_title: string
+  company_name: string
+  job_location: string
 }
 
 export function personToFormValues(person: Person): PersonFormValues {
@@ -38,6 +44,10 @@ export function personToFormValues(person: Person): PersonFormValues {
     gotra: person.gotra ?? '',
     marital_status: person.marital_status ?? '',
     education: person.education ?? '',
+    occupation_type: person.occupation_type ?? '',
+    job_title: person.job_title ?? '',
+    company_name: person.company_name ?? '',
+    job_location: person.job_location ?? '',
   }
 }
 
@@ -50,27 +60,20 @@ export function formValuesToPatch(values: Partial<PersonFormValues>): Partial<Pe
 }
 
 export async function getOwnPerson(authUserId: string): Promise<Person | null> {
-  // No unique constraint exists on auth_user_id, so more than one row can
-  // exist for the same account (e.g. from re-verifying before this table
-  // had a duplicate check). Order + take the first rather than
-  // .maybeSingle(), which throws on >1 row. `id` is a required tiebreaker:
-  // rows inserted close together can share the same created_at timestamp,
-  // and ORDER BY with no tiebreak on a tied column is non-deterministic in
-  // Postgres -- without it, two calls to this exact query can return two
-  // different rows for the same account, which is exactly what caused an
-  // infinite AuthGate/ProfileWizard redirect loop on a duplicate-polluted
-  // test account (one query call saw an incomplete row, the next saw a
-  // complete one).
+  // people_auth_user_id_key (migration 0002) guarantees at most one row per
+  // account, so a plain .maybeSingle() is safe -- no ordering/tiebreak
+  // needed (that used to matter before this constraint existed, when a
+  // duplicate-polluted account could cause AuthGate/ProfileWizard to
+  // redirect in a loop depending on which duplicate a query happened to
+  // return).
   const { data, error } = await supabase
     .from('people')
     .select('*')
     .eq('auth_user_id', authUserId)
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true })
-    .limit(1)
+    .maybeSingle()
 
   if (error) throw error
-  return data && data.length > 0 ? data[0] : null
+  return data
 }
 
 export async function createOwnPerson(authUserId: string, fullName: string): Promise<Person> {

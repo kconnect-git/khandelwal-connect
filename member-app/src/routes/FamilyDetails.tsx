@@ -2,21 +2,45 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { getOwnPerson } from '../lib/people'
-import { getChildren, addChild, type ChildRecord } from '../lib/familyDetails'
+import {
+  getChildren,
+  addChild,
+  getFamilyRelations,
+  validateRelativeContact,
+  EMPTY_RELATIVE_CONTACT,
+  type ChildRecord,
+  type FamilySlot,
+  type RelativeContact,
+} from '../lib/familyDetails'
 import { RelationField } from '../components/familyDetails/RelationField'
 import { RelationSearchInput } from '../components/familyDetails/RelationSearchInput'
+import { RelativeContactFields } from '../components/familyDetails/RelativeContactFields'
 import { ChildField } from '../components/familyDetails/ChildField'
 import { ProfileLoadError } from '../components/guards/ProfileLoadError'
-import type { Person } from '../types/database'
+import type { FamilyRelationRow, Person } from '../types/database'
+
+function relationInitial(relations: Map<FamilySlot, FamilyRelationRow>, slot: FamilySlot) {
+  const row = relations.get(slot)
+  return {
+    initialName: row?.related_name ?? '',
+    initialMemberCode: row?.related_member_code ?? '',
+    initialContact: {
+      mobileNumber: row?.mobile_number ?? '',
+      dob: row?.dob ?? '',
+    } satisfies RelativeContact,
+  }
+}
 
 export function FamilyDetails() {
   const [person, setPerson] = useState<Person | null>(null)
+  const [relations, setRelations] = useState<Map<FamilySlot, FamilyRelationRow> | null>(null)
   const [children, setChildren] = useState<ChildRecord[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loadAttempt, setLoadAttempt] = useState(0)
 
   const [newChildName, setNewChildName] = useState('')
   const [newChildMemberCode, setNewChildMemberCode] = useState('')
+  const [newChildContact, setNewChildContact] = useState<RelativeContact>(EMPTY_RELATIVE_CONTACT)
   const [addingChild, setAddingChild] = useState(false)
   const [addChildError, setAddChildError] = useState<string | null>(null)
 
@@ -32,10 +56,14 @@ export function FamilyDetails() {
         const loaded = await getOwnPerson(session.user.id)
         if (cancelled || !loaded) return
 
-        const loadedChildren = await getChildren(loaded.id)
+        const [loadedRelations, loadedChildren] = await Promise.all([
+          getFamilyRelations(loaded.id),
+          getChildren(loaded.id),
+        ])
         if (cancelled) return
 
         setPerson(loaded)
+        setRelations(new Map(loadedRelations.map((r) => [r.slot, r])))
         setChildren(loadedChildren)
       } catch (err) {
         if (cancelled) return
@@ -62,21 +90,35 @@ export function FamilyDetails() {
     )
   }
 
-  if (!person || !children) return null
+  if (!person || !relations || !children) return null
 
   async function handleAddChild() {
     setAddChildError(null)
     if (newChildName.trim().length === 0) return
 
+    const contactError = validateRelativeContact(newChildContact)
+    if (contactError) {
+      setAddChildError(contactError)
+      return
+    }
+
     setAddingChild(true)
     try {
-      const id = await addChild(newChildName.trim(), newChildMemberCode.trim() || null)
+      const id = await addChild(newChildName.trim(), newChildMemberCode.trim() || null, newChildContact)
       setChildren((prev) => [
         ...(prev ?? []),
-        { id, child_name: newChildName.trim(), child_member_code: newChildMemberCode.trim() || null, child_id: null },
+        {
+          id,
+          child_name: newChildName.trim(),
+          child_member_code: newChildMemberCode.trim() || null,
+          child_id: null,
+          child_mobile_number: newChildContact.mobileNumber.trim() || null,
+          child_dob: newChildContact.dob.trim() || null,
+        },
       ])
       setNewChildName('')
       setNewChildMemberCode('')
+      setNewChildContact(EMPTY_RELATIVE_CONTACT)
     } catch (err) {
       setAddChildError(err instanceof Error ? err.message : 'Something went wrong adding this child.')
     } finally {
@@ -109,48 +151,42 @@ export function FamilyDetails() {
             while every other slot worked. Results show each candidate's
             gotra, so the user can disambiguate visually instead. */}
         <RelationField
-          key={`father-${person.updated_at}`}
+          key={`father-${loadAttempt}`}
           label="Father"
           slot="father"
-          initialName={person.father_name ?? ''}
-          initialMemberCode={person.father_member_code ?? ''}
+          {...relationInitial(relations, 'father')}
         />
         <RelationField
-          key={`mother-${person.updated_at}`}
+          key={`mother-${loadAttempt}`}
           label="Mother"
           slot="mother"
-          initialName={person.mother_name ?? ''}
-          initialMemberCode={person.mother_member_code ?? ''}
+          {...relationInitial(relations, 'mother')}
         />
         <RelationField
-          key={`maternal_uncle-${person.updated_at}`}
+          key={`maternal_uncle-${loadAttempt}`}
           label="Maternal uncle (mama)"
           slot="maternal_uncle"
-          initialName={person.maternal_uncle_name ?? ''}
-          initialMemberCode={person.maternal_uncle_member_code ?? ''}
+          {...relationInitial(relations, 'maternal_uncle')}
         />
         {isMarried && (
           <>
             <RelationField
-              key={`spouse-${person.updated_at}`}
+              key={`spouse-${loadAttempt}`}
               label="Spouse"
               slot="spouse"
-              initialName={person.spouse_name ?? ''}
-              initialMemberCode={person.spouse_member_code ?? ''}
+              {...relationInitial(relations, 'spouse')}
             />
             <RelationField
-              key={`spouse_father-${person.updated_at}`}
+              key={`spouse_father-${loadAttempt}`}
               label="Spouse's father"
               slot="spouse_father"
-              initialName={person.spouse_father_name ?? ''}
-              initialMemberCode={person.spouse_father_member_code ?? ''}
+              {...relationInitial(relations, 'spouse_father')}
             />
             <RelationField
-              key={`spouse_mother-${person.updated_at}`}
+              key={`spouse_mother-${loadAttempt}`}
               label="Spouse's mother"
               slot="spouse_mother"
-              initialName={person.spouse_mother_name ?? ''}
-              initialMemberCode={person.spouse_mother_member_code ?? ''}
+              {...relationInitial(relations, 'spouse_mother')}
             />
           </>
         )}
@@ -174,7 +210,11 @@ export function FamilyDetails() {
             memberCode={newChildMemberCode}
             onNameChange={setNewChildName}
             onMemberCodeChange={setNewChildMemberCode}
+            onMobileNumberFound={(mobileNumber) =>
+              setNewChildContact((prev) => ({ ...prev, mobileNumber }))
+            }
           />
+          <RelativeContactFields value={newChildContact} onChange={setNewChildContact} />
           {addChildError && <p className="text-sm text-[var(--color-accent)]">{addChildError}</p>}
           <button
             type="button"

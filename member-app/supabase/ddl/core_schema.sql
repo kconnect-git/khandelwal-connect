@@ -10,6 +10,11 @@ create table people (
   current_state text,
   state_code text check (state_code is null or state_code ~ '^[A-Z]{2}$'),
   member_code text unique check (member_code is null or member_code ~ '^KHA-[A-Z]{2}-\d{4}$'),
+  -- Added in migration 0002 (Phase 1) after a dedupe pass; this file never
+  -- reflected it until a live schema introspection turned up the drift.
+  -- Guarantees at most one people row per auth account -- every self-lookup
+  -- RPC below can do a plain `where auth_user_id = auth.uid()` with no
+  -- tiebreak, and the client (getOwnPerson) can use .maybeSingle().
   father_id uuid references people(id),
   mother_id uuid references people(id),
   spouse_id uuid references people(id),
@@ -39,8 +44,31 @@ create table people (
   spouse_mother_id uuid references people(id),
   spouse_mother_name text,
   spouse_mother_member_code text,
+  -- Post-3a (0011): the caller's own entries of each relative's mobile and
+  -- dob. Never copied from / written to the relative's own row.
+  father_mobile_number text,
+  father_dob date,
+  mother_mobile_number text,
+  mother_dob date,
+  spouse_mobile_number text,
+  spouse_dob date,
+  maternal_uncle_mobile_number text,
+  maternal_uncle_dob date,
+  spouse_father_mobile_number text,
+  spouse_father_dob date,
+  spouse_mother_mobile_number text,
+  spouse_mother_dob date,
+  -- Phase 3b (0013): fixed occupation select (Edit profile only, never the
+  -- wizard) + job sub-fields that only apply when occupation_type = Job.
+  occupation_type text
+    check (occupation_type is null
+           or occupation_type in ('Business', 'Job', 'Student', 'Homemaker', 'Retired', 'Other')),
+  job_title text,
+  company_name text,
+  job_location text,
   created_at timestamptz default now(),
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  constraint people_auth_user_id_key unique (auth_user_id)
 );
 
 create index people_state_code_idx on people (state_code);
@@ -54,9 +82,45 @@ create table children (
   child_name text not null,
   child_member_code text,
   child_id uuid references people(id),
+  child_mobile_number text,
+  child_dob date,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- (0015) children.parent_person_id is the RLS filter on every children
+-- policy and the exact column getChildren() filters on every load.
+create index children_parent_person_id_idx on children (parent_person_id);
+
+create table family_relations (
+  id uuid primary key default gen_random_uuid(),
+  person_id uuid references people(id) not null,
+  slot text not null check (slot in ('father', 'mother', 'spouse', 'maternal_uncle', 'spouse_father', 'spouse_mother')),
+  related_name text,
+  related_member_code text,
+  related_id uuid references people(id),
+  mobile_number text,
+  dob date,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (person_id, slot)
+);
+
+create index family_relations_person_id_idx on family_relations (person_id);
+
+alter table family_relations enable row level security;
+
+-- Same self-scoped shape as children's policies (0006) -- everything here
+-- is denormalized onto the caller's own person_id, so no cross-row read is
+-- ever needed for these four.
+create policy "own family relations read" on family_relations for select
+  using (person_id in (select id from people where auth_user_id = auth.uid()));
+create policy "own family relations insert" on family_relations for insert
+  with check (person_id in (select id from people where auth_user_id = auth.uid()));
+create policy "own family relations update" on family_relations for update
+  using (person_id in (select id from people where auth_user_id = auth.uid()));
+create policy "own family relations delete" on family_relations for delete
+  using (person_id in (select id from people where auth_user_id = auth.uid()));
 
 -- Generates and persists a KHA-<state_code>-<4 digits> member code for the
 -- calling user's own row. The 4-digit part starts as the last 4 digits of
@@ -84,9 +148,7 @@ begin
   select id, mobile_number, state_code, member_code
     into v_person_id, v_mobile, v_state_code, v_existing_code
   from people
-  where auth_user_id = auth.uid()
-  order by created_at asc, id asc
-  limit 1;
+  where auth_user_id = auth.uid();
 
   if v_person_id is null then
     raise exception 'No person row for the current user';
@@ -149,18 +211,14 @@ declare
 begin
   select id into v_person_id
   from people
-  where auth_user_id = auth.uid()
-  order by created_at asc, id asc
-  limit 1;
+  where auth_user_id = auth.uid();
 
   if v_person_id is null then
     raise exception 'No person row for the current user';
   end if;
 
   update people
-  set gotra = p_gotra,
-      marital_status = p_marital_status,
-      education = p_education
+  set gotra = p_gotra, marital_status = p_marital_status, education = p_education
   where id = v_person_id;
 
   return assign_member_code();
@@ -170,15 +228,39 @@ $$;
 revoke all on function complete_onboarding_step3(text, text, text) from public;
 grant execute on function complete_onboarding_step3(text, text, text) to authenticated;
 
+-- Phase 3b (0014): one member <-> many listings. `type` was dropped -- the
+-- per-person occupation now lives on people.occupation_type (0013).
+-- Writes are plain client access under the RLS policies in enable_rls.sql;
+-- reads for listing cards go through the RPCs appended at the end of this
+-- file (owner join).
 create table businesses (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid references people(id) not null,
   name text not null,
   category text,
   description text,
-  type text check (type in ('business','professional','student','homemaker')),
-  created_at timestamptz default now()
+  city text,
+  state text,
+  contact_phone text
+    check (contact_phone is null or contact_phone ~ '^\+91[6-9]\d{9}$'),
+  website text,
+  logo_url text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
 );
+
+-- Mirrored by BUSINESS_CATEGORY_OPTIONS in src/lib/formOptions.ts.
+alter table businesses
+  add constraint businesses_category_check check (
+    category is null or category in (
+      'Retail', 'Wholesale & Distribution', 'Manufacturing', 'Jewellery',
+      'Textiles & Garments', 'Real Estate & Construction', 'Finance & Accounting',
+      'Legal', 'Healthcare', 'Education', 'IT & Software', 'Hospitality & Food',
+      'Transport & Logistics', 'Agriculture', 'Other'
+    )
+  );
+
+create index businesses_owner_id_idx on businesses (owner_id);
 
 create table events (
   id uuid primary key default gen_random_uuid(),
@@ -247,6 +329,9 @@ create table admin_audit_log (
 -- member_code), and only limited fields -- not a general table read. SECURITY
 -- DEFINER because it has to search across rows the caller doesn't own,
 -- which self-only RLS on `people` otherwise blocks.
+-- mobile_number added (0012): already printed on every member's profile
+-- screen (get_member_profile), so returning it here too is not a new
+-- exposure. dob deliberately stays out of this list -- see 0012's header.
 create or replace function search_registered_members(
   p_full_name text,
   p_gotra text default null,
@@ -259,14 +344,15 @@ returns table (
   native_place text,
   current_city text,
   current_state text,
-  member_code text
+  member_code text,
+  mobile_number text
 )
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_state, p.member_code
+  select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_state, p.member_code, p.mobile_number
   from people p
   where p.member_code is not null
     and length(trim(p_full_name)) >= 3
@@ -285,10 +371,52 @@ grant execute on function search_registered_members(text, text, text) to authent
 -- to a real registered member (checked here, since the caller can't read
 -- other rows directly) -- on success the *_id FK is set alongside the
 -- denormalized *_member_code; omitting the code clears any existing link.
+-- Mobile/dob (0011) are optional plain entries about the relative.
+--
+-- Shared normalisation for the optional contact fields: blank -> null, and a
+-- non-blank mobile must be the same +91 + 10 digits shape the wizard
+-- enforces for the member's own number. dob may not be in the future.
+create or replace function normalize_relative_mobile(p_mobile text)
+returns text
+language plpgsql
+immutable
+as $$
+begin
+  if p_mobile is null or length(trim(p_mobile)) = 0 then
+    return null;
+  end if;
+  if trim(p_mobile) !~ '^\+91[6-9]\d{9}$' then
+    raise exception 'Mobile number must be +91 followed by 10 digits';
+  end if;
+  return trim(p_mobile);
+end;
+$$;
+
+create or replace function check_relative_dob(p_dob date)
+returns date
+language plpgsql
+stable
+as $$
+begin
+  if p_dob is not null and p_dob > current_date then
+    raise exception 'Date of birth cannot be in the future';
+  end if;
+  return p_dob;
+end;
+$$;
+
+revoke all on function normalize_relative_mobile(text) from public;
+revoke all on function check_relative_dob(date) from public;
+
+-- Rewritten as an upsert into family_relations. Much shorter than the old
+-- 6-way if/elsif over 6x5 people columns -- adding a 7th slot here is a
+-- change to the check constraint above, not a new branch or new columns.
 create or replace function save_family_relation(
   p_slot text,
   p_name text,
-  p_member_code text default null
+  p_member_code text default null,
+  p_mobile_number text default null,
+  p_dob date default null
 )
 returns void
 language plpgsql
@@ -299,7 +427,7 @@ declare
   v_self_id uuid;
   v_matched_id uuid;
 begin
-  select id into v_self_id from people where auth_user_id = auth.uid() order by created_at asc, id asc limit 1;
+  select id into v_self_id from people where auth_user_id = auth.uid();
   if v_self_id is null then
     raise exception 'No person row for the current user';
   end if;
@@ -317,30 +445,31 @@ begin
     p_member_code := null;
   end if;
 
-  if p_slot = 'father' then
-    update people set father_name = p_name, father_member_code = p_member_code, father_id = v_matched_id where id = v_self_id;
-  elsif p_slot = 'mother' then
-    update people set mother_name = p_name, mother_member_code = p_member_code, mother_id = v_matched_id where id = v_self_id;
-  elsif p_slot = 'spouse' then
-    update people set spouse_name = p_name, spouse_member_code = p_member_code, spouse_id = v_matched_id where id = v_self_id;
-  elsif p_slot = 'maternal_uncle' then
-    update people set maternal_uncle_name = p_name, maternal_uncle_member_code = p_member_code, maternal_uncle_id = v_matched_id where id = v_self_id;
-  elsif p_slot = 'spouse_father' then
-    update people set spouse_father_name = p_name, spouse_father_member_code = p_member_code, spouse_father_id = v_matched_id where id = v_self_id;
-  elsif p_slot = 'spouse_mother' then
-    update people set spouse_mother_name = p_name, spouse_mother_member_code = p_member_code, spouse_mother_id = v_matched_id where id = v_self_id;
-  end if;
+  insert into family_relations (person_id, slot, related_name, related_member_code, related_id, mobile_number, dob)
+  values (v_self_id, p_slot, p_name, p_member_code, v_matched_id,
+          normalize_relative_mobile(p_mobile_number), check_relative_dob(p_dob))
+  on conflict (person_id, slot) do update
+    set related_name = excluded.related_name,
+        related_member_code = excluded.related_member_code,
+        related_id = excluded.related_id,
+        mobile_number = excluded.mobile_number,
+        dob = excluded.dob,
+        updated_at = now();
 end;
 $$;
 
-revoke all on function save_family_relation(text, text, text) from public;
-grant execute on function save_family_relation(text, text, text) to authenticated;
+revoke all on function save_family_relation(text, text, text, text, date) from public;
+grant execute on function save_family_relation(text, text, text, text, date) to authenticated;
 
--- Children: same match-or-plain-text pattern as save_family_relation, but as
--- insert/update against the `children` table since a person can have any
--- number of them. Deleting a child row needs no cross-row read, so it's a
--- plain client-side delete under children's own RLS policy -- no RPC for it.
-create or replace function add_child(p_name text, p_member_code text default null)
+-- (0015) self-lookup simplified: the unique auth_user_id constraint (see
+-- the people table above) makes the old order-by-and-limit-1 tiebreak
+-- unnecessary.
+create or replace function add_child(
+  p_name text,
+  p_member_code text default null,
+  p_mobile_number text default null,
+  p_dob date default null
+)
 returns uuid
 language plpgsql
 security definer
@@ -351,7 +480,7 @@ declare
   v_matched_id uuid;
   v_new_id uuid;
 begin
-  select id into v_self_id from people where auth_user_id = auth.uid() order by created_at asc, id asc limit 1;
+  select id into v_self_id from people where auth_user_id = auth.uid();
   if v_self_id is null then
     raise exception 'No person row for the current user';
   end if;
@@ -366,15 +495,22 @@ begin
     p_member_code := null;
   end if;
 
-  insert into children (parent_person_id, child_name, child_member_code, child_id)
-  values (v_self_id, p_name, p_member_code, v_matched_id)
+  insert into children (parent_person_id, child_name, child_member_code, child_id, child_mobile_number, child_dob)
+  values (v_self_id, p_name, p_member_code, v_matched_id,
+          normalize_relative_mobile(p_mobile_number), check_relative_dob(p_dob))
   returning id into v_new_id;
 
   return v_new_id;
 end;
 $$;
 
-create or replace function update_child(p_child_row_id uuid, p_name text, p_member_code text default null)
+create or replace function update_child(
+  p_child_row_id uuid,
+  p_name text,
+  p_member_code text default null,
+  p_mobile_number text default null,
+  p_dob date default null
+)
 returns void
 language plpgsql
 security definer
@@ -384,7 +520,7 @@ declare
   v_self_id uuid;
   v_matched_id uuid;
 begin
-  select id into v_self_id from people where auth_user_id = auth.uid() order by created_at asc, id asc limit 1;
+  select id into v_self_id from people where auth_user_id = auth.uid();
   if v_self_id is null then
     raise exception 'No person row for the current user';
   end if;
@@ -400,7 +536,10 @@ begin
   end if;
 
   update children
-  set child_name = p_name, child_member_code = p_member_code, child_id = v_matched_id, updated_at = now()
+  set child_name = p_name, child_member_code = p_member_code, child_id = v_matched_id,
+      child_mobile_number = normalize_relative_mobile(p_mobile_number),
+      child_dob = check_relative_dob(p_dob),
+      updated_at = now()
   where id = p_child_row_id and parent_person_id = v_self_id;
 
   if not found then
@@ -409,10 +548,10 @@ begin
 end;
 $$;
 
-revoke all on function add_child(text, text) from public;
-grant execute on function add_child(text, text) to authenticated;
-revoke all on function update_child(uuid, text, text) from public;
-grant execute on function update_child(uuid, text, text) to authenticated;
+revoke all on function add_child(text, text, text, date) from public;
+grant execute on function add_child(text, text, text, date) to authenticated;
+revoke all on function update_child(uuid, text, text, text, date) from public;
+grant execute on function update_child(uuid, text, text, text, date) to authenticated;
 
 -- Family invites (a "your father/spouse/etc. was invited" notification
 -- email) are sent by the send-family-invite Edge Function via Resend
@@ -434,11 +573,14 @@ grant execute on function update_child(uuid, text, text) to authenticated;
 -- member_code) appear -- same gate as search_registered_members. total_count
 -- is the filtered total (window function), repeated on every row, so one
 -- call gives both a page and the stat-block number.
+-- (0013) occupation_type/job_title/company_name join the directory tier;
+-- get_member_profile adds job_location; list_directory gains p_occupation.
 create or replace function list_directory(
   p_search text default null,
   p_state text default null,
   p_city text default null,
   p_gotra text default null,
+  p_occupation text default null,
   p_limit int default 20,
   p_offset int default 0
 )
@@ -451,6 +593,9 @@ returns table (
   current_state text,
   member_code text,
   profile_photo_url text,
+  occupation_type text,
+  job_title text,
+  company_name text,
   total_count bigint
 )
 language sql
@@ -460,6 +605,7 @@ set search_path = public
 as $$
   select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_state,
          p.member_code, p.profile_photo_url,
+         p.occupation_type, p.job_title, p.company_name,
          count(*) over () as total_count
   from people p
   where p.member_code is not null
@@ -468,16 +614,15 @@ as $$
     and (p_state is null or p.current_state ilike p_state)
     and (p_city is null or p.current_city ilike p_city)
     and (p_gotra is null or p.gotra ilike p_gotra)
+    and (p_occupation is null or p.occupation_type = p_occupation)
   order by p.full_name asc, p.id asc
   limit least(greatest(coalesce(p_limit, 20), 1), 50)
   offset greatest(coalesce(p_offset, 0), 0);
 $$;
 
-revoke all on function list_directory(text, text, text, text, int, int) from public;
-grant execute on function list_directory(text, text, text, text, int, int) to authenticated;
+revoke all on function list_directory(text, text, text, text, text, int, int) from public;
+grant execute on function list_directory(text, text, text, text, text, int, int) to authenticated;
 
--- One member's profile-tier fields. Zero rows if the id doesn't exist or the
--- person hasn't completed onboarding.
 create or replace function get_member_profile(p_person_id uuid)
 returns table (
   id uuid,
@@ -491,7 +636,11 @@ returns table (
   education text,
   marital_status text,
   mobile_number text,
-  profile_photo_url text
+  profile_photo_url text,
+  occupation_type text,
+  job_title text,
+  company_name text,
+  job_location text
 )
 language sql
 stable
@@ -500,7 +649,8 @@ set search_path = public
 as $$
   select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_district,
          p.current_state, p.member_code, p.education, p.marital_status,
-         p.mobile_number, p.profile_photo_url
+         p.mobile_number, p.profile_photo_url,
+         p.occupation_type, p.job_title, p.company_name, p.job_location
   from people p
   where p.id = p_person_id
     and p.member_code is not null;
@@ -509,8 +659,8 @@ $$;
 revoke all on function get_member_profile(uuid) from public;
 grant execute on function get_member_profile(uuid) to authenticated;
 
--- Distinct filter values actually present among members, so the directory's
--- filter chips only ever offer options that return results.
+-- Same (kind, value) shape as before, plus an 'occupation' kind. Column
+-- list is unchanged, so create or replace is fine here.
 create or replace function directory_filter_options()
 returns table (kind text, value text)
 language sql
@@ -528,9 +678,159 @@ as $$
     union
     select 'gotra', p.gotra
     from people p where p.member_code is not null and p.gotra is not null
+    union
+    select 'occupation', p.occupation_type
+    from people p where p.member_code is not null and p.occupation_type is not null
   ) f
   order by f.kind, f.value;
 $$;
 
 revoke all on function directory_filter_options() from public;
 grant execute on function directory_filter_options() to authenticated;
+
+-- ================================================================
+-- Phase 3b (0014): business listing RPCs
+-- ================================================================
+
+-- Paginated listing with the owner's directory-tier fields joined in. Same
+-- total_count window-function shape as list_directory (0010). Only
+-- businesses whose owner has completed onboarding appear.
+create or replace function list_businesses(
+  p_search text default null,
+  p_category text default null,
+  p_city text default null,
+  p_state text default null,
+  p_limit int default 20,
+  p_offset int default 0
+)
+returns table (
+  id uuid,
+  name text,
+  category text,
+  description text,
+  city text,
+  state text,
+  contact_phone text,
+  website text,
+  logo_url text,
+  owner_id uuid,
+  owner_name text,
+  owner_photo_url text,
+  owner_member_code text,
+  total_count bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select b.id, b.name, b.category, b.description, b.city, b.state,
+         b.contact_phone, b.website, b.logo_url,
+         p.id as owner_id, p.full_name as owner_name, p.profile_photo_url as owner_photo_url,
+         p.member_code as owner_member_code,
+         count(*) over () as total_count
+  from businesses b
+  join people p on p.id = b.owner_id
+  where p.member_code is not null
+    and (p_search is null or length(trim(p_search)) = 0
+         or b.name ilike '%' || p_search || '%'
+         or p.full_name ilike '%' || p_search || '%')
+    and (p_category is null or b.category = p_category)
+    and (p_city is null or b.city ilike p_city)
+    and (p_state is null or b.state ilike p_state)
+  order by b.name asc, b.id asc
+  limit least(greatest(coalesce(p_limit, 20), 1), 50)
+  offset greatest(coalesce(p_offset, 0), 0);
+$$;
+
+revoke all on function list_businesses(text, text, text, text, int, int) from public;
+grant execute on function list_businesses(text, text, text, text, int, int) to authenticated;
+
+-- One listing, same columns (minus total_count). Zero rows if unknown or
+-- the owner hasn't completed onboarding.
+create or replace function get_business(p_business_id uuid)
+returns table (
+  id uuid,
+  name text,
+  category text,
+  description text,
+  city text,
+  state text,
+  contact_phone text,
+  website text,
+  logo_url text,
+  owner_id uuid,
+  owner_name text,
+  owner_photo_url text,
+  owner_member_code text
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select b.id, b.name, b.category, b.description, b.city, b.state,
+         b.contact_phone, b.website, b.logo_url,
+         p.id, p.full_name, p.profile_photo_url, p.member_code
+  from businesses b
+  join people p on p.id = b.owner_id
+  where b.id = p_business_id
+    and p.member_code is not null;
+$$;
+
+revoke all on function get_business(uuid) from public;
+grant execute on function get_business(uuid) to authenticated;
+
+-- A member's listings, for the BUSINESSES section on their profile screen.
+create or replace function list_member_businesses(p_person_id uuid)
+returns table (
+  id uuid,
+  name text,
+  category text,
+  city text,
+  logo_url text
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select b.id, b.name, b.category, b.city, b.logo_url
+  from businesses b
+  join people p on p.id = b.owner_id
+  where b.owner_id = p_person_id
+    and p.member_code is not null
+  order by b.name asc, b.id asc;
+$$;
+
+revoke all on function list_member_businesses(uuid) from public;
+grant execute on function list_member_businesses(uuid) to authenticated;
+
+-- Distinct chip values actually present, same (kind, value) shape as
+-- directory_filter_options.
+create or replace function business_filter_options()
+returns table (kind text, value text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select f.kind, f.value
+  from (
+    select 'category' as kind, b.category as value
+    from businesses b join people p on p.id = b.owner_id
+    where p.member_code is not null and b.category is not null
+    union
+    select 'city', b.city
+    from businesses b join people p on p.id = b.owner_id
+    where p.member_code is not null and b.city is not null
+    union
+    select 'state', b.state
+    from businesses b join people p on p.id = b.owner_id
+    where p.member_code is not null and b.state is not null
+  ) f
+  order by f.kind, f.value;
+$$;
+
+revoke all on function business_filter_options() from public;
+grant execute on function business_filter_options() to authenticated;

@@ -2,14 +2,18 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { getOwnPerson } from '../lib/people'
-import { getProfileCompletion } from '../lib/profileCompletion'
+import { getProfileCompletion, type ProfileCompletion } from '../lib/profileCompletion'
 import { listDirectory } from '../lib/directory'
+import { listBusinesses } from '../lib/businesses'
+import { getFamilyNameCompletionFlags } from '../lib/familyDetails'
 import type { Person } from '../types/database'
 
 export function Dashboard() {
   const navigate = useNavigate()
   const [person, setPerson] = useState<Person | null>(null)
+  const [completion, setCompletion] = useState<ProfileCompletion | null>(null)
   const [memberCount, setMemberCount] = useState<number | null>(null)
+  const [businessCount, setBusinessCount] = useState<number | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
@@ -22,7 +26,14 @@ export function Dashboard() {
         if (!session) return
 
         const loaded = await getOwnPerson(session.user.id)
-        if (!cancelled) setPerson(loaded)
+        if (cancelled || !loaded) return
+        setPerson(loaded)
+
+        // father_name/mother_name/spouse_name moved off `people` and into
+        // family_relations (post-3b) -- merge them back in just for the
+        // completion count, same keys getProfileCompletion() already checks.
+        const familyFlags = await getFamilyNameCompletionFlags(loaded.id)
+        if (!cancelled) setCompletion(getProfileCompletion({ ...loaded, ...familyFlags }))
       } catch (err) {
         console.error('[Dashboard] failed to load profile', err)
       }
@@ -34,6 +45,11 @@ export function Dashboard() {
         if (!cancelled) setMemberCount(page.length > 0 ? page[0].total_count : 0)
       })
       .catch((err) => console.error('[Dashboard] failed to load member count', err))
+    listBusinesses({ limit: 1 })
+      .then((page) => {
+        if (!cancelled) setBusinessCount(page.length > 0 ? page[0].total_count : 0)
+      })
+      .catch((err) => console.error('[Dashboard] failed to load business count', err))
 
     return () => {
       cancelled = true
@@ -45,8 +61,6 @@ export function Dashboard() {
     await supabase.auth.signOut()
     navigate('/signup', { replace: true })
   }
-
-  const completion = person ? getProfileCompletion(person) : null
 
   return (
     <div className="flex-1 flex flex-col items-start gap-5 px-5 py-8 max-w-2xl mx-auto w-full">
@@ -75,15 +89,26 @@ export function Dashboard() {
         </div>
       )}
 
-      {memberCount !== null && (
+      {(memberCount !== null || businessCount !== null) && (
         <div className="w-full grid grid-cols-2 gap-3">
-          <Link
-            to="/directory"
-            className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
-          >
-            <span className="font-heading text-3xl font-bold leading-tight">{memberCount}</span>
-            <span className="block text-sm text-[var(--color-text-muted)]">Members</span>
-          </Link>
+          {memberCount !== null && (
+            <Link
+              to="/directory"
+              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
+            >
+              <span className="font-heading text-3xl font-bold leading-tight">{memberCount}</span>
+              <span className="block text-sm text-[var(--color-text-muted)]">Members</span>
+            </Link>
+          )}
+          {businessCount !== null && (
+            <Link
+              to="/businesses"
+              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
+            >
+              <span className="font-heading text-3xl font-bold leading-tight">{businessCount}</span>
+              <span className="block text-sm text-[var(--color-text-muted)]">Businesses</span>
+            </Link>
+          )}
         </div>
       )}
 

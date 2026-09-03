@@ -64,15 +64,37 @@ function FamilyIcon({ size }: { size: number }) {
   )
 }
 
+function BusinessIcon({ size }: { size: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2" y="7" width="20" height="14" rx="2" />
+      <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+      <path d="M2 13h20" />
+    </svg>
+  )
+}
+
 const TABS: Tab[] = [
   { to: '/dashboard', label: 'Home', icon: HomeIcon },
   { to: '/directory', label: 'Directory', icon: DirectoryIcon },
+  { to: '/businesses', label: 'Businesses', icon: BusinessIcon },
   { to: '/family-details', label: 'Family', icon: FamilyIcon },
 ]
 
 function isActive(pathname: string, to: string): boolean {
   // /directory also covers /members/:id -- a member profile is reached from
-  // the directory, so the tab stays lit there.
+  // the directory, so the tab stays lit there. /businesses covers its own
+  // /businesses/:id and /businesses/mine via the plain prefix match.
   if (to === '/directory') return pathname.startsWith('/directory') || pathname.startsWith('/members')
   return pathname.startsWith(to)
 }

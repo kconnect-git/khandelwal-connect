@@ -17,6 +17,9 @@ import { ProfileEdit } from './routes/ProfileEdit'
 import { FamilyDetails } from './routes/FamilyDetails'
 import { Directory } from './routes/Directory'
 import { MemberProfile } from './routes/MemberProfile'
+import { Businesses } from './routes/Businesses'
+import { BusinessDetail } from './routes/BusinessDetail'
+import { MyBusinesses } from './routes/MyBusinesses'
 
 function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
@@ -120,6 +123,30 @@ export default function App() {
                 element={
                   <AuthGate key="member-profile" requireComplete>
                     <MemberProfile />
+                  </AuthGate>
+                }
+              />
+              <Route
+                path="/businesses"
+                element={
+                  <AuthGate key="businesses" requireComplete>
+                    <Businesses />
+                  </AuthGate>
+                }
+              />
+              <Route
+                path="/businesses/mine"
+                element={
+                  <AuthGate key="my-businesses" requireComplete>
+                    <MyBusinesses />
+                  </AuthGate>
+                }
+              />
+              <Route
+                path="/businesses/:id"
+                element={
+                  <AuthGate key="business-detail" requireComplete>
+                    <BusinessDetail />
                   </AuthGate>
                 }
               />

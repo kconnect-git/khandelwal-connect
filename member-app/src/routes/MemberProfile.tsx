@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { getOwnPerson } from '../lib/people'
 import { getMemberProfile, type MemberProfile as MemberProfileData } from '../lib/directory'
+import { businessMetaLine, listMemberBusinesses, type MemberBusiness } from '../lib/businesses'
 import { Avatar } from '../components/Avatar'
 
 // Flat section in the design doc's member-profile style: small uppercase
@@ -37,6 +38,7 @@ function Section({
 export function MemberProfile() {
   const { id } = useParams<{ id: string }>()
   const [profile, setProfile] = useState<MemberProfileData | null>(null)
+  const [businesses, setBusinesses] = useState<MemberBusiness[]>([])
   const [ownId, setOwnId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -51,12 +53,18 @@ export function MemberProfile() {
       try {
         const { data: sessionData } = await supabase.auth.getSession()
         const session = sessionData.session
-        const [loadedProfile, own] = await Promise.all([
+        const [loadedProfile, own, loadedBusinesses] = await Promise.all([
           getMemberProfile(id),
           session ? getOwnPerson(session.user.id) : Promise.resolve(null),
+          // Best-effort: a failed businesses fetch shouldn't blank the profile.
+          listMemberBusinesses(id).catch((err) => {
+            console.error('[MemberProfile] failed to load businesses', err)
+            return [] as MemberBusiness[]
+          }),
         ])
         if (cancelled) return
         setProfile(loadedProfile)
+        setBusinesses(loadedBusinesses)
         setOwnId(own?.id ?? null)
       } catch (err) {
         if (cancelled) return
@@ -166,6 +174,44 @@ export function MemberProfile() {
           { label: 'Native place', value: profile.native_place },
         ]}
       />
+
+      <Section
+        title="Work"
+        rows={[
+          { label: 'Occupation', value: profile.occupation_type },
+          { label: 'Job title', value: profile.job_title },
+          { label: 'Company', value: profile.company_name },
+          { label: 'Work location', value: profile.job_location },
+        ]}
+      />
+
+      {businesses.length > 0 && (
+        <section className="w-full flex flex-col gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
+            Businesses
+          </h2>
+          <ul className="flex flex-col gap-2">
+            {businesses.map((b) => (
+              <li key={b.id}>
+                <Link
+                  to={`/businesses/${b.id}`}
+                  className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
+                >
+                  <Avatar name={b.name} photoUrl={b.logo_url} size={40} />
+                  <span className="flex flex-col min-w-0">
+                    <span className="font-heading font-medium truncate">{b.name}</span>
+                    {businessMetaLine(b) && (
+                      <span className="text-sm text-[var(--color-text-muted)] truncate">
+                        {businessMetaLine(b)}
+                      </span>
+                    )}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <Section
         title="Background"

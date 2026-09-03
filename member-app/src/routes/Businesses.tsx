@@ -2,23 +2,22 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
 import {
-  getDirectoryFilterOptions,
-  listDirectory,
-  workLine,
-  type DirectoryEntry,
-  type DirectoryFilterOptions,
-} from '../lib/directory'
+  businessMetaLine,
+  getBusinessFilterOptions,
+  listBusinesses,
+  type BusinessFilterOptions,
+  type BusinessListingPage,
+} from '../lib/businesses'
 
 const PAGE_SIZE = 20
 
 type Filters = {
-  state: string
+  category: string
   city: string
-  gotra: string
-  occupation: string
+  state: string
 }
 
-const EMPTY_FILTERS: Filters = { state: '', city: '', gotra: '', occupation: '' }
+const EMPTY_FILTERS: Filters = { category: '', city: '', state: '' }
 
 function ChipSelect({
   label,
@@ -53,21 +52,12 @@ function ChipSelect({
   )
 }
 
-function metaLine(entry: DirectoryEntry): string {
-  const location = [entry.current_city, entry.current_state].filter(Boolean).join(', ')
-  return [entry.gotra, location].filter(Boolean).join(' · ')
-}
-
-function workMeta(entry: DirectoryEntry): string {
-  return workLine(entry)
-}
-
-export function Directory() {
+export function Businesses() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
-  const [options, setOptions] = useState<DirectoryFilterOptions | null>(null)
-  const [entries, setEntries] = useState<DirectoryEntry[]>([])
+  const [options, setOptions] = useState<BusinessFilterOptions | null>(null)
+  const [entries, setEntries] = useState<BusinessListingPage[]>([])
   const [total, setTotal] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -79,9 +69,9 @@ export function Directory() {
   }, [search])
 
   useEffect(() => {
-    getDirectoryFilterOptions()
+    getBusinessFilterOptions()
       .then(setOptions)
-      .catch((err) => console.error('[Directory] failed to load filter options', err))
+      .catch((err) => console.error('[Businesses] failed to load filter options', err))
   }, [])
 
   useEffect(() => {
@@ -89,12 +79,11 @@ export function Directory() {
     setLoading(true)
     setError(null)
 
-    listDirectory({
+    listBusinesses({
       search: debouncedSearch || undefined,
-      state: filters.state || undefined,
+      category: filters.category || undefined,
       city: filters.city || undefined,
-      gotra: filters.gotra || undefined,
-      occupation: filters.occupation || undefined,
+      state: filters.state || undefined,
       limit: PAGE_SIZE,
       offset: 0,
     })
@@ -105,8 +94,8 @@ export function Directory() {
       })
       .catch((err) => {
         if (cancelled) return
-        console.error('[Directory] failed to load members', err)
-        setError(err instanceof Error ? err.message : 'Something went wrong loading the directory.')
+        console.error('[Businesses] failed to load listings', err)
+        setError(err instanceof Error ? err.message : 'Something went wrong loading businesses.')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -120,61 +109,66 @@ export function Directory() {
   async function handleLoadMore() {
     setLoadingMore(true)
     try {
-      const page = await listDirectory({
+      const page = await listBusinesses({
         search: debouncedSearch || undefined,
-        state: filters.state || undefined,
+        category: filters.category || undefined,
         city: filters.city || undefined,
-        gotra: filters.gotra || undefined,
-        occupation: filters.occupation || undefined,
+        state: filters.state || undefined,
         limit: PAGE_SIZE,
         offset: entries.length,
       })
       setEntries((prev) => [...prev, ...page])
       if (page.length > 0) setTotal(page[0].total_count)
     } catch (err) {
-      console.error('[Directory] failed to load more members', err)
-      setError(err instanceof Error ? err.message : 'Something went wrong loading more members.')
+      console.error('[Businesses] failed to load more', err)
+      setError(err instanceof Error ? err.message : 'Something went wrong loading more businesses.')
     } finally {
       setLoadingMore(false)
     }
   }
 
-  const anyFilter =
-    filters.state !== '' || filters.city !== '' || filters.gotra !== '' || filters.occupation !== ''
+  const anyFilter = filters.category !== '' || filters.city !== '' || filters.state !== ''
   const filtering = debouncedSearch !== '' || anyFilter
   const hasMore = total !== null && entries.length < total
 
   return (
     <div className="flex-1 flex flex-col gap-5 px-5 py-8 max-w-2xl mx-auto w-full">
       <div className="flex items-end justify-between">
-        <h1 className="font-heading text-2xl font-semibold">Directory</h1>
+        <h1 className="font-heading text-2xl font-semibold">Businesses</h1>
         {total !== null && (
           <p className="text-right">
             <span className="font-heading text-2xl font-bold leading-none">{total}</span>{' '}
             <span className="text-sm text-[var(--color-text-muted)]">
-              {filtering ? 'matches' : 'members'}
+              {filtering ? 'matches' : 'listings'}
             </span>
           </p>
         )}
       </div>
+
+      <Link
+        to="/businesses/mine"
+        className="self-start rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
+      >
+        My businesses
+      </Link>
 
       <div className="flex items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus-within:border-[var(--color-accent)]">
         <input
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name…"
-          aria-label="Search members by name"
+          placeholder="Search by business or owner name…"
+          aria-label="Search businesses"
           className="flex-1 min-w-0 bg-transparent px-3 py-2.5 outline-none"
         />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <ChipSelect
-          label="State"
-          value={filters.state}
-          onChange={(state) => setFilters((f) => ({ ...f, state }))}
-          options={options?.states ?? []}
+          label="Category"
+          value={filters.category}
+          onChange={(category) => setFilters((f) => ({ ...f, category }))}
+          options={options?.categories ?? []}
         />
         <ChipSelect
           label="City"
@@ -183,16 +177,10 @@ export function Directory() {
           options={options?.cities ?? []}
         />
         <ChipSelect
-          label="Gotra"
-          value={filters.gotra}
-          onChange={(gotra) => setFilters((f) => ({ ...f, gotra }))}
-          options={options?.gotras ?? []}
-        />
-        <ChipSelect
-          label="Occupation"
-          value={filters.occupation}
-          onChange={(occupation) => setFilters((f) => ({ ...f, occupation }))}
-          options={options?.occupations ?? []}
+          label="State"
+          value={filters.state}
+          onChange={(state) => setFilters((f) => ({ ...f, state }))}
+          options={options?.states ?? []}
         />
         {anyFilter && (
           <button
@@ -208,34 +196,32 @@ export function Directory() {
       {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-[var(--color-text-muted)]">Loading members…</p>
+        <p className="text-sm text-[var(--color-text-muted)]">Loading businesses…</p>
       ) : entries.length === 0 ? (
         <p className="text-sm text-[var(--color-text-muted)]">
           {filtering
-            ? 'No members match your search or filters.'
-            : 'No members in the directory yet.'}
+            ? 'No businesses match your search or filters.'
+            : 'No businesses listed yet. Be the first to add yours.'}
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
           {entries.map((entry) => (
             <li key={entry.id}>
               <Link
-                to={`/members/${entry.id}`}
+                to={`/businesses/${entry.id}`}
                 className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
               >
-                <Avatar name={entry.full_name} photoUrl={entry.profile_photo_url} size={40} />
+                <Avatar name={entry.name} photoUrl={entry.logo_url} size={40} />
                 <span className="flex flex-col min-w-0">
-                  <span className="font-heading font-medium truncate">{entry.full_name}</span>
-                  {metaLine(entry) && (
+                  <span className="font-heading font-medium truncate">{entry.name}</span>
+                  {businessMetaLine(entry) && (
                     <span className="text-sm text-[var(--color-text-muted)] truncate">
-                      {metaLine(entry)}
+                      {businessMetaLine(entry)}
                     </span>
                   )}
-                  {workMeta(entry) && (
-                    <span className="text-xs text-[var(--color-text-muted)] truncate">
-                      {workMeta(entry)}
-                    </span>
-                  )}
+                  <span className="text-xs text-[var(--color-text-muted)] truncate">
+                    {entry.owner_name}
+                  </span>
                 </span>
               </Link>
             </li>

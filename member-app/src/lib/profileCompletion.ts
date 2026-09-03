@@ -15,6 +15,7 @@ export type ProfileFieldKey =
   | 'mother_name'
   | 'spouse_name'
   | 'profile_photo_url'
+  | 'occupation_type'
 
 type FieldMeta = {
   key: ProfileFieldKey
@@ -45,6 +46,8 @@ export const PROFILE_FIELDS: FieldMeta[] = [
   { key: 'mother_name', label: 'Mother (family details)', requiredForWizard: false, editableNow: true },
   { key: 'spouse_name', label: 'Spouse (family details)', requiredForWizard: false, editableNow: true },
   { key: 'profile_photo_url', label: 'Profile photo', requiredForWizard: false, editableNow: true },
+  // Edit-profile only, by design: the wizard stays at its 3 steps.
+  { key: 'occupation_type', label: 'Occupation', requiredForWizard: false, editableNow: true },
 ]
 
 export type ProfileCompletion = {

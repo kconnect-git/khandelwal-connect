@@ -6,7 +6,7 @@ This document captures all product, design, and technical decisions made during 
 
 ## 0. Current status (read this first)
 
-**Phase 0, Phase 1, Phase 2, and Phase 3a are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, and **`phase-3a-summary.md`** before starting Phase 3b. This section is a short pointer, not the source of truth for current state.
+**Phases 0, 1, 2, 3a, and 3b are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, and **`phase-3b-summary.md`** before starting Phase 4. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
 
 Phase 0 (backend foundation):
 - ✅ Supabase project created (region: Singapore), email auth + Resend SMTP, OTP email template edited to show the 6-digit code
@@ -37,9 +37,15 @@ Phase 3a (directory & member profiles — Phase 3 was split into 3a/3b during pl
 - ✅ App navigation: mobile bottom tabs + desktop header links (Home · Directory · Family)
 - ✅ Dashboard redesigned to the design-doc home layout (accent membership card with member code, stat tiles)
 - ✅ Fixes: header-staleness (`ProfileRefreshContext`), SPA refresh-404 on Vercel (`vercel.json` rewrite — supersedes `phase-2-summary.md` §4's workaround), father-search gotra bug
-- ❌ **Still not built**: business profiles (→ Phase 3b), profession/mandal filters, "hide my number" toggle. See `phase-3a-summary.md`.
+- ❌ **Still not built**: mandal filter, "hide my number" toggle. See `phase-3a-summary.md`.
 
-**Immediate next step:** read the three phase summaries (especially `phase-3a-summary.md` §6–7), then plan Phase 3b (business profiles).
+Phase 3b (occupation + business listings):
+- ✅ Occupation select on Edit profile (never the wizard), job title/company/location when Job; WORK section on member profiles; Occupation chip + work line in the directory
+- ✅ `businesses` made real: RLS (members read, owner writes), listing `/businesses`, detail `/businesses/:id`, editor `/businesses/mine` with logo upload, dashboard tile, nav tab, BUSINESSES section on member profiles
+- ✅ `businesses.type` dropped (superseded by `people.occupation_type`); fixed category list
+- ❌ Not built: listing moderation (→ Phase 5 admin), distributor/investor tags, logo galleries. See `phase-3b-summary.md`.
+
+**Immediate next step:** read the four phase summaries (especially `phase-3b-summary.md` §4–6), then plan Phase 4 (events).
 
 ---
 
@@ -236,10 +242,11 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 - [x] *(added, not originally planned)* profile photo upload, app-wide navigation, dashboard redesign, header-refresh + SPA-404 fixes
 - **Exit criteria (3a)**: members can find each other and view profiles — met. Full details in `phase-3a-summary.md`
 
-**3b — business profiles, not started:**
-- [ ] Business profile creation (RLS policies for `businesses` must be decided first — see `phase-3a-summary.md` §7)
-- [ ] Directory linking (profession on member profiles, business listings/filter in directory)
-- **Exit criteria (3b)**: members can see business listings
+**3b — occupation + business listings, done:**
+- [x] Occupation on the person (Edit profile only, not the wizard — a deliberate rule, see `phase-3b-summary.md` §1)
+- [x] Business listing creation/edit/logo (`businesses` access model: RLS for owner writes + `SECURITY DEFINER` list RPCs for reads)
+- [x] Directory linking (WORK + BUSINESSES sections on member profiles, Occupation chip in the directory, Businesses tab + dashboard tile)
+- **Exit criteria (3b)**: members can see business listings — met. Full details in `phase-3b-summary.md`
 
 ### Phase 4 — Events (Week 6)
 - Events list (Upcoming/Registered/Past)
@@ -275,7 +282,7 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 ## 10. Open decisions still to make
 
 - ~~Exact RLS policy wording for `people` table visibility~~ — **decided in Phase 3a**: `people` stays self-only; cross-member reads go through `SECURITY DEFINER` RPCs with fixed column tiers (see `phase-3a-summary.md` §1–2)
-- Access model for `businesses` in Phase 3b: real RLS policies vs. the tiered-RPC pattern (see `phase-3a-summary.md` §5/§7)
+- ~~Access model for `businesses` in Phase 3b~~ — **decided in Phase 3b**: hybrid — real RLS for owner writes, `SECURITY DEFINER` RPCs for reads that join the owner (see `phase-3b-summary.md` §1/§4). Reuse for events.
 - Per-user "hide my number" toggle — planned follow-up to Phase 3a's decision to print mobile numbers on profiles
 - Whether dues/payments launch in v1 or a later phase
 - Self-hosting fonts vs. CDN (deferred until design is locked)

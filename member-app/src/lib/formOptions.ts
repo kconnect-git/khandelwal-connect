@@ -16,6 +16,37 @@ export const MARITAL_STATUS_OPTIONS: Option[] = [
   { value: 'Prefer not to say', label: 'Prefer not to say' },
 ]
 
+// Fixed list, mirrored by the check constraint on people.occupation_type
+// (migration 0013). 'Job' unlocks title/company/location sub-fields;
+// 'Business' points the member at the Businesses pages instead.
+export const OCCUPATION_OPTIONS: Option[] = [
+  { value: 'Business', label: 'Business' },
+  { value: 'Job', label: 'Job' },
+  { value: 'Student', label: 'Student' },
+  { value: 'Homemaker', label: 'Homemaker' },
+  { value: 'Retired', label: 'Retired' },
+  { value: 'Other', label: 'Other' },
+]
+
+// Fixed list, mirrored by businesses_category_check (migration 0014).
+export const BUSINESS_CATEGORY_OPTIONS: Option[] = [
+  'Retail',
+  'Wholesale & Distribution',
+  'Manufacturing',
+  'Jewellery',
+  'Textiles & Garments',
+  'Real Estate & Construction',
+  'Finance & Accounting',
+  'Legal',
+  'Healthcare',
+  'Education',
+  'IT & Software',
+  'Hospitality & Food',
+  'Transport & Logistics',
+  'Agriculture',
+  'Other',
+].map((value) => ({ value, label: value }))
+
 type StateEntry = { name: string; code: string }
 
 // 2-letter codes follow the same convention as Indian vehicle registration

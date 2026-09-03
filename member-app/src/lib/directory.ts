@@ -9,6 +9,9 @@ export type DirectoryEntry = {
   current_state: string | null
   member_code: string
   profile_photo_url: string | null
+  occupation_type: string | null
+  job_title: string | null
+  company_name: string | null
   total_count: number
 }
 
@@ -25,12 +28,17 @@ export type MemberProfile = {
   marital_status: string | null
   mobile_number: string | null
   profile_photo_url: string | null
+  occupation_type: string | null
+  job_title: string | null
+  company_name: string | null
+  job_location: string | null
 }
 
 export type DirectoryFilterOptions = {
   states: string[]
   cities: string[]
   gotras: string[]
+  occupations: string[]
 }
 
 export async function listDirectory(params: {
@@ -38,6 +46,7 @@ export async function listDirectory(params: {
   state?: string
   city?: string
   gotra?: string
+  occupation?: string
   limit?: number
   offset?: number
 }): Promise<DirectoryEntry[]> {
@@ -46,6 +55,7 @@ export async function listDirectory(params: {
     p_state: params.state || null,
     p_city: params.city || null,
     p_gotra: params.gotra || null,
+    p_occupation: params.occupation || null,
     p_limit: params.limit ?? 20,
     p_offset: params.offset ?? 0,
   })
@@ -72,5 +82,20 @@ export async function getDirectoryFilterOptions(): Promise<DirectoryFilterOption
     states: rows.filter((r) => r.kind === 'state').map((r) => r.value),
     cities: rows.filter((r) => r.kind === 'city').map((r) => r.value),
     gotras: rows.filter((r) => r.kind === 'gotra').map((r) => r.value),
+    occupations: rows.filter((r) => r.kind === 'occupation').map((r) => r.value),
   }
+}
+
+/** One-line work summary for cards/profiles: "Job title · Company" for a
+ * job, otherwise just the occupation (or nothing if unset). */
+export function workLine(entry: {
+  occupation_type: string | null
+  job_title: string | null
+  company_name: string | null
+}): string {
+  if (entry.occupation_type === 'Job') {
+    const job = [entry.job_title, entry.company_name].filter(Boolean).join(' · ')
+    return job || 'Job'
+  }
+  return entry.occupation_type ?? ''
 }

@@ -12,6 +12,12 @@ type RelationSearchInputProps = {
   /** Called after a search completes, with whatever it found (possibly
    * empty) -- lets the parent know when it's safe to offer "Invite". */
   onSearched?: (results: MemberCandidate[]) => void
+  /** Called on select with the matched member's real mobile number, only
+   * when they have one on file -- lets the parent prefill the relative's
+   * contact fields. Not called for dob: a matched member's real date of
+   * birth is never returned by search (see phase-3a-summary.md §1), so
+   * there is nothing to prefill it with. */
+  onMobileNumberFound?: (mobileNumber: string) => void
 }
 
 /** Name + member-ID inputs with a "search registered members" affordance.
@@ -25,6 +31,7 @@ export function RelationSearchInput({
   gotraHint,
   nativePlaceHint,
   onSearched,
+  onMobileNumberFound,
 }: RelationSearchInputProps) {
   const [searching, setSearching] = useState(false)
   const [results, setResults] = useState<MemberCandidate[] | null>(null)
@@ -57,6 +64,7 @@ export function RelationSearchInput({
   function handleSelect(candidate: MemberCandidate) {
     onNameChange(candidate.full_name)
     onMemberCodeChange(candidate.member_code)
+    if (candidate.mobile_number) onMobileNumberFound?.(candidate.mobile_number)
     setResults(null)
   }
 

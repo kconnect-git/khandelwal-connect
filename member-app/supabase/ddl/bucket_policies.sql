@@ -31,6 +31,16 @@ create policy "public business media read"
   on storage.objects for select
   using (bucket_id = 'business-media');
 
+-- Phase 3b: logo re-upload replaces the file, so owners also need update +
+-- delete on their own folder (see migration 0014).
+create policy "own business media update"
+  on storage.objects for update
+  using (bucket_id = 'business-media' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "own business media delete"
+  on storage.objects for delete
+  using (bucket_id = 'business-media' and auth.uid()::text = (storage.foldername(name))[1]);
+
 -- matrimony-photos: owner-only upload, NO general read policy yet
 -- (read access depends on mutual accept in matrimony_interests —
 -- write that policy when the matrimony feature is built, Phase 6)

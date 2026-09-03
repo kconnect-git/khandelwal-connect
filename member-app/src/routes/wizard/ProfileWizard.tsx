@@ -31,6 +31,12 @@ const BLANK_FORM: PersonFormValues = {
   gotra: '',
   marital_status: '',
   education: '',
+  // Edit-profile only -- present so the type lines up, never saved by the
+  // wizard (pickStepValues only copies STEP_FIELDS).
+  occupation_type: '',
+  job_title: '',
+  company_name: '',
+  job_location: '',
 }
 
 function pickStepValues(
