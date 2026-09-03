@@ -39,11 +39,17 @@ export function StepPersonal({ value, onChange }: StepPersonalProps) {
         onChange={(v) => onChange({ dob: v })}
       />
       <TextField
-        label="Mobile number (optional)"
+        label="Mobile number"
         type="tel"
-        value={value.mobile_number}
-        onChange={(v) => onChange({ mobile_number: v })}
-        placeholder="+91 98765 43210"
+        required
+        prefix="+91"
+        maxLength={10}
+        value={value.mobile_number.replace(/^\+91/, '')}
+        onChange={(v) => {
+          const digits = v.replace(/\D/g, '').slice(0, 10)
+          onChange({ mobile_number: digits ? `+91${digits}` : '' })
+        }}
+        placeholder="98765 43210"
       />
     </div>
   )

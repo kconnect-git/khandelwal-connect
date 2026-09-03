@@ -13,7 +13,11 @@ export type ProfileStatus =
 
 const AUTO_RETRY_DELAY_MS = 500
 
-export function useProfileStatus(): ProfileStatus {
+// Accepts an optional key (e.g. the current route) to force a refetch --
+// components that persist across navigations (like the header) otherwise
+// never see profile changes made on other screens, since their effect only
+// runs once on mount.
+export function useProfileStatus(refreshKey?: unknown): ProfileStatus {
   const [status, setStatus] = useState<ProfileStatus>({ state: 'loading' })
   const [attempt, setAttempt] = useState(0)
 
@@ -30,10 +34,23 @@ export function useProfileStatus(): ProfileStatus {
           return
         }
 
-        const person = await getOwnPerson(session.user.id)
+        let person = await getOwnPerson(session.user.id)
         if (cancelled) return
 
         if (person && isWizardComplete(person)) {
+          // Assign a member code the first time a profile is seen complete.
+          // state_code is populated client-side from the state dropdown
+          // (see formOptions.ts) -- the RPC only handles collision-safe
+          // number assignment, not the name -> code lookup.
+          if (!person.member_code) {
+            try {
+              const { data: code, error: rpcError } = await supabase.rpc('assign_member_code')
+              if (!rpcError && code) person = { ...person, member_code: code }
+            } catch (rpcErr) {
+              console.error('[useProfileStatus] failed to assign member code', rpcErr)
+            }
+            if (cancelled) return
+          }
           setStatus({ state: 'complete', person })
         } else {
           setStatus({ state: 'incomplete', person, authUserId: session.user.id })
@@ -68,7 +85,7 @@ export function useProfileStatus(): ProfileStatus {
     return () => {
       cancelled = true
     }
-  }, [attempt])
+  }, [attempt, refreshKey])
 
   return status
 }

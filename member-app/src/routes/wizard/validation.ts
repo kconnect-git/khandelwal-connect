@@ -4,11 +4,11 @@ export type WizardStep = 1 | 2 | 3
 
 export const STEP_FIELDS: Record<WizardStep, (keyof PersonFormValues)[]> = {
   1: ['full_name', 'gender', 'dob', 'mobile_number'],
-  2: ['current_city', 'native_place', 'district', 'state'],
+  2: ['home_address', 'current_city', 'current_district', 'current_state', 'state_code', 'native_place'],
   3: ['gotra', 'marital_status', 'education'],
 }
 
-const MOBILE_PATTERN = /^\+?[0-9]{7,15}$/
+const MOBILE_PATTERN = /^\+91[6-9]\d{9}$/
 const MIN_AGE_YEARS = 13
 const MAX_AGE_YEARS = 115
 
@@ -17,10 +17,7 @@ function isFilled(value: string): boolean {
 }
 
 export function stepFieldsMissing(step: WizardStep, form: PersonFormValues): boolean {
-  return STEP_FIELDS[step].some((field) => {
-    if (field === 'mobile_number') return false
-    return !isFilled(form[field])
-  })
+  return STEP_FIELDS[step].some((field) => !isFilled(form[field]))
 }
 
 export function validateStep(step: WizardStep, form: PersonFormValues): string | null {
@@ -39,18 +36,26 @@ export function validateStep(step: WizardStep, form: PersonFormValues): string |
       return 'Please enter a plausible date of birth.'
     }
 
-    if (isFilled(form.mobile_number) && !MOBILE_PATTERN.test(form.mobile_number.trim())) {
-      return 'Please enter a valid mobile number.'
+    if (!isFilled(form.mobile_number)) return 'Mobile number is required.'
+    if (!MOBILE_PATTERN.test(form.mobile_number.trim())) {
+      return 'Please enter a valid 10-digit mobile number.'
     }
 
     return null
   }
 
   if (step === 2) {
+    if (!isFilled(form.home_address)) return 'Home address is required.'
     if (!isFilled(form.current_city)) return 'Current city is required.'
+    if (!isFilled(form.current_district)) return 'Current district is required.'
+    // state_code is set alongside current_state by the same dropdown pick
+    // (see StepLocation.tsx) -- checking it too catches rows saved before
+    // that pairing existed, where current_state has a value but state_code
+    // was never backfilled. Re-picking the same state repopulates it.
+    if (!isFilled(form.current_state) || !isFilled(form.state_code)) {
+      return 'Please select your current state.'
+    }
     if (!isFilled(form.native_place)) return 'Native place is required.'
-    if (!isFilled(form.district)) return 'District is required.'
-    if (!isFilled(form.state)) return 'Please select a state.'
     return null
   }
 

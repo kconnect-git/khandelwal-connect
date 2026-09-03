@@ -21,10 +21,12 @@ const BLANK_FORM: PersonFormValues = {
   gender: '',
   dob: '',
   mobile_number: '',
+  home_address: '',
   current_city: '',
+  current_district: '',
+  current_state: '',
+  state_code: '',
   native_place: '',
-  district: '',
-  state: '',
   gotra: '',
   marital_status: '',
   education: '',
@@ -136,14 +138,28 @@ export function ProfileWizard() {
     setError(null)
     setLoading(true)
     try {
-      const patch = formValuesToPatch(pickStepValues(form, step))
-      const saved = await saveOwnPerson(patch, existingPerson, authUserId)
-      setExistingPerson(saved)
-
       if (step === 3) {
+        // One RPC call: saves the step-3 fields and generates the member
+        // code in the same database round trip, rather than saving here
+        // and leaving code assignment to a later page load.
+        const { data: memberCode, error: rpcError } = await supabase.rpc(
+          'complete_onboarding_step3',
+          {
+            p_gotra: form.gotra,
+            p_marital_status: form.marital_status,
+            p_education: form.education,
+          },
+        )
+        if (rpcError) throw rpcError
+        console.log('[ProfileWizard] onboarding complete, member code', memberCode)
+
         navigate('/dashboard', { replace: true })
         return
       }
+
+      const patch = formValuesToPatch(pickStepValues(form, step))
+      const saved = await saveOwnPerson(patch, existingPerson, authUserId)
+      setExistingPerson(saved)
       setStep((step + 1) as WizardStep)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong saving your details.')

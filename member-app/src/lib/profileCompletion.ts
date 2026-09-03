@@ -3,10 +3,11 @@ export type ProfileFieldKey =
   | 'gender'
   | 'dob'
   | 'mobile_number'
+  | 'home_address'
   | 'current_city'
+  | 'current_district'
+  | 'current_state'
   | 'native_place'
-  | 'district'
-  | 'state'
   | 'gotra'
   | 'marital_status'
   | 'education'
@@ -30,11 +31,12 @@ export const PROFILE_FIELDS: FieldMeta[] = [
   { key: 'full_name', label: 'Full name', requiredForWizard: true, editableNow: true },
   { key: 'gender', label: 'Gender', requiredForWizard: true, editableNow: true },
   { key: 'dob', label: 'Date of birth', requiredForWizard: true, editableNow: true },
-  { key: 'mobile_number', label: 'Mobile number', requiredForWizard: false, editableNow: true },
+  { key: 'mobile_number', label: 'Mobile number', requiredForWizard: true, editableNow: true },
+  { key: 'home_address', label: 'Home address', requiredForWizard: true, editableNow: true },
   { key: 'current_city', label: 'Current city', requiredForWizard: true, editableNow: true },
+  { key: 'current_district', label: 'Current district', requiredForWizard: true, editableNow: true },
+  { key: 'current_state', label: 'Current state', requiredForWizard: true, editableNow: true },
   { key: 'native_place', label: 'Native place', requiredForWizard: true, editableNow: true },
-  { key: 'district', label: 'District', requiredForWizard: true, editableNow: true },
-  { key: 'state', label: 'State', requiredForWizard: true, editableNow: true },
   { key: 'gotra', label: 'Gotra', requiredForWizard: true, editableNow: true },
   { key: 'marital_status', label: 'Marital status', requiredForWizard: true, editableNow: true },
   { key: 'education', label: 'Education', requiredForWizard: true, editableNow: true },

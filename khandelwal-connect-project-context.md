@@ -6,29 +6,30 @@ This document captures all product, design, and technical decisions made during 
 
 ## 0. Current status (read this first)
 
-**Phase 0 backend setup is complete.** The Supabase project already exists and is configured. Do not recreate any of the following — connect to what's already there:
+**Phase 0 and Phase 1 are both complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`** before starting Phase 2. This section is a short pointer, not the source of truth for current state.
 
-- ✅ Supabase project created (region: Singapore, closest to India-based users)
-- ✅ Email auth enabled, custom SMTP connected via **Resend** (host `smtp.resend.com`, port 465, username `resend`, sender currently on Resend's shared test domain — should move to a verified custom domain before real users sign up)
-- ✅ OTP email template edited so `{{ .Token }}` (the 6-digit code) is the primary content, with the magic-link `{{ .ConfirmationURL }}` demoted to a small fallback link
-- ✅ API keys: using the **new Publishable/Secret key format** (not legacy anon/service_role — Supabase is deprecating legacy keys by end of 2026). Publishable key goes in the frontend `.env`; secret key is reserved for server-side code only (Edge Functions, admin backend) and has not been used client-side anywhere
-- ✅ Core schema created in the SQL editor (all 8 tables from Section 6: `people`, `businesses`, `events`, `rsvps`, `matrimony_profiles`, `matrimony_interests`, `dues`, `admin_audit_log`)
-- ✅ RLS enabled on every table, with placeholder policies on `people` (self-read/update/insert only). Every other table is fully locked down — no policies written yet, intentionally, until each feature is built
-- ✅ "Automatically expose new tables" turned OFF, "Enable automatic RLS" turned ON in project API settings — so any new table created later starts locked down by default
-- ✅ Storage buckets created (`profile-photos`, `business-media`, `matrimony-photos`, `kyc-documents`) with SQL policies applied (public read for photos/media, owner-only upload via `{user_id}/filename` path convention, `kyc-documents` has no public read policy at all)
-- ✅ `@supabase/supabase-js` installed in a scaffolded project, `.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` set, `utils/supabase.ts` client created
-- ⏳ Sanity check in progress: confirming a `select()` against `people` from the client returns an empty array (not an error) when logged out — validates RLS + client wiring before building further
+Phase 0 (backend foundation):
+- ✅ Supabase project created (region: Singapore), email auth + Resend SMTP, OTP email template edited to show the 6-digit code
+- ✅ Publishable/Secret key format in use; publishable key in frontend `.env` only
+- ✅ Core schema + RLS created — **note**: the `people` table has evolved significantly since Section 6 below was drafted (new columns, two SQL functions). See `phase-1-summary.md` for the current DDL, not Section 6
+- ✅ Storage buckets created with policies (untouched since Phase 0 — no upload flow built yet)
+- ✅ `supabase-js` installed, client wired up, RLS sanity-checked
+- ✅ Real Vite/React app shell (dark vermilion tokens, Archivo + Hanken Grotesk), light/dark toggle
+- ✅ Signup → email OTP → onboarding flow wired to real `people` inserts
 
-**Not yet started (this is where a new session should pick up):**
-- Real Vite/React app shell — current `App.tsx` is still Supabase's generic `todos` demo, not the actual app
-- Dark vermilion design tokens as CSS variables, Archivo + Hanken Grotesk fonts loaded
-- Signup flow UI (3-step form) wired to real `people` table inserts
-- Email OTP login screen — **note**: needs an actual 6-digit code input field, which is not shown in the original design docs (those were designed around magic-link-style flows). Add this as a new screen/step in the login flow
-- Light/dark mode toggle
-- Empty/basic Home dashboard shell
-- First deploy to Vercel or Netlify
+Phase 1 (identity & signup):
+- ✅ 3-step onboarding wizard (personal → location → gotra/background), all fields required except where noted
+- ✅ Dashboard shell with a profile-completion indicator
+- ✅ Profile edit screen (reuses the same 3 step components)
+- ✅ Header user menu (initials avatar, member ID, log out) — not in the original plan, added during Phase 1
+- ✅ Per-member code system (`KHA-<state>-<4 digits>`) — also not in the original plan, see `phase-1-summary.md`
 
-**Immediate next step:** scaffold the real app (design tokens, fonts, routing) and build the signup → OTP entry → empty dashboard flow. This is Phase 0's remaining exit criteria.
+**Not yet started — this is Phase 2 (see Section 9):**
+- Family tree sub-forms (parents, grandparents, spouse, children, siblings) writing to `people.father_id`/`mother_id`/`spouse_id`
+- Family tree overview screen with drill-in navigation
+- RLS policies for family-tree visibility (today `people` RLS only allows self-read/update — Phase 2 needs a real policy for reading relations, not just your own row)
+
+**Immediate next step:** read `phase-1-summary.md`, then start Phase 2 per Section 9 below.
 
 ---
 
@@ -100,6 +101,8 @@ Two source design documents were reviewed:
 ---
 
 ## 6. Data model
+
+> **This section is the original planning draft and is now stale for `people`.** Phase 1 renamed `district`/`state` to `current_district`/`current_state`, added `home_address`, `state_code`, and `member_code` (plus two SQL functions). See `phase-1-summary.md` for the actual current DDL — treat what's below as historical context for *why* the table looks the way it does, not as truth.
 
 Core principle: the family tree is **one self-referencing `people` table**, not six separate tables per the six design-doc sub-screens (Ancestral roots, Parents, Grandparents, Spouse, Children, Siblings). Grandparents, for example, fall out of the schema automatically via `father_id.father_id` — no special-cased screen logic needed per generation.
 
@@ -195,17 +198,18 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 - [x] Core schema created (Section 6), RLS enabled on every table (placeholder policies on `people`, rest locked down)
 - [x] Storage buckets created (Section 7) with policies attached
 - [x] `supabase-js` installed, `.env` and client set up, connection sanity-checked
-- [ ] React/Vite project scaffolded as the real app (not the demo), dark vermilion design tokens as CSS variables, Archivo/Hanken Grotesk loaded
-- [ ] Signup form + OTP code-entry screen (note: needs a new UI step not in the original design docs — see Section 0) wired to real auth + `people` inserts
-- [ ] Deployed once to Vercel/Netlify for a live URL from day one
-- **Exit criteria**: sign up with email, get OTP, land on empty dashboard — *backend half done, frontend half remaining*
+- [x] React/Vite project scaffolded as the real app (not the demo), dark vermilion design tokens as CSS variables, Archivo/Hanken Grotesk loaded
+- [x] Signup form + OTP code-entry screen wired to real auth + `people` inserts
+- [x] Deployed to Vercel
+- **Exit criteria**: sign up with email, get OTP, land on empty dashboard — met
 
 ### Phase 1 — Identity & signup (Week 2)
-- 3-step signup form (personal → location → gotra)
-- Email OTP flow end-to-end
-- Home dashboard shell with profile-completion indicator
-- Basic profile edit screen
-- **Exit criteria**: new member can sign up, verify, see their own dashboard
+- [x] 3-step signup form (personal → location → gotra)
+- [x] Email OTP flow end-to-end
+- [x] Home dashboard shell with profile-completion indicator
+- [x] Basic profile edit screen
+- [x] *(added, not originally planned)* header user menu, per-member code system, mandatory locked `+91` mobile number
+- **Exit criteria**: new member can sign up, verify, see their own dashboard — met. Full details in `phase-1-summary.md`
 
 ### Phase 2 — Family tree (Weeks 3–4)
 - Ancestral roots, parents, grandparents, spouse & family, children, siblings sub-forms, all writing to `people`

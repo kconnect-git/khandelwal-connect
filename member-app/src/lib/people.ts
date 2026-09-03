@@ -1,4 +1,5 @@
 import { supabase } from '../utils/supabase'
+import { STATE_CODE_BY_NAME } from './formOptions'
 import type { Person } from '../types/database'
 
 export type PersonFormValues = {
@@ -6,10 +7,12 @@ export type PersonFormValues = {
   gender: string
   dob: string
   mobile_number: string
+  home_address: string
   current_city: string
+  current_district: string
+  current_state: string
+  state_code: string
   native_place: string
-  district: string
-  state: string
   gotra: string
   marital_status: string
   education: string
@@ -21,10 +24,17 @@ export function personToFormValues(person: Person): PersonFormValues {
     gender: person.gender ?? '',
     dob: person.dob ?? '',
     mobile_number: person.mobile_number ?? '',
+    home_address: person.home_address ?? '',
     current_city: person.current_city ?? '',
+    current_district: person.current_district ?? '',
+    current_state: person.current_state ?? '',
+    // Backfill for rows saved before state_code existed: current_state is
+    // already set, but state_code was never populated. Deriving it here
+    // (client-side, same lookup the dropdown itself uses) means the wizard
+    // doesn't force the user to re-pick a state that's already showing the
+    // right value on screen.
+    state_code: person.state_code || STATE_CODE_BY_NAME[person.current_state ?? ''] || '',
     native_place: person.native_place ?? '',
-    district: person.district ?? '',
-    state: person.state ?? '',
     gotra: person.gotra ?? '',
     marital_status: person.marital_status ?? '',
     education: person.education ?? '',

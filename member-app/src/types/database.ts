@@ -6,12 +6,15 @@ export type Person = {
   dob: string | null
   gotra: string | null
   native_place: string | null
-  district: string | null
-  state: string | null
+  current_district: string | null
+  current_state: string | null
+  state_code: string | null
+  member_code: string | null
   father_id: string | null
   mother_id: string | null
   spouse_id: string | null
   current_city: string | null
+  home_address: string | null
   marital_status: string | null
   education: string | null
   profile_photo_url: string | null
@@ -31,7 +34,20 @@ export type Database = {
       }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      assign_member_code: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      complete_onboarding_step3: {
+        Args: {
+          p_gotra: string
+          p_marital_status: string
+          p_education: string
+        }
+        Returns: string
+      }
+    }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>
   }
