@@ -34,6 +34,9 @@ if (import.meta.env.DEV) {
     })
   }
   globalForSupabase.__supabase = supabase
+  // Console access for debugging/RLS spot-checks (dev builds only):
+  // `await supabase.from('people').select('*')` etc.
+  ;(window as unknown as { supabase: SupabaseClient<Database> }).supabase = supabase
 } else {
   supabase.auth.onAuthStateChange((event, session) => {
     console.log('[supabase auth]', event, session?.user?.id ?? null)

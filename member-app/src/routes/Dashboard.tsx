@@ -49,24 +49,42 @@ export function Dashboard() {
   const completion = person ? getProfileCompletion(person) : null
 
   return (
-    <div className="flex-1 flex flex-col items-start gap-4 px-5 py-10 max-w-2xl mx-auto w-full">
-      <h1 className="font-heading text-2xl font-semibold">
-        Welcome{person?.full_name ? `, ${person.full_name}` : ''}
-      </h1>
-      <p className="text-[var(--color-text-muted)]">
-        Your dashboard is coming together — events and more will land here in the next phases.
-      </p>
+    <div className="flex-1 flex flex-col items-start gap-5 px-5 py-8 max-w-2xl mx-auto w-full">
+      <div>
+        <p className="text-sm font-medium text-[var(--color-accent)]">Namaste</p>
+        <h1 className="font-heading text-3xl font-bold uppercase leading-tight">
+          {person?.full_name ?? ''}
+        </h1>
+      </div>
+
+      {person?.member_code && (
+        <div className="w-full rounded-xl bg-[var(--color-accent)] text-white px-4 py-4 flex items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/80">
+              Membership
+            </p>
+            <p className="font-heading text-3xl font-bold tracking-wide mt-1 truncate">
+              {person.member_code}
+            </p>
+          </div>
+          {(person.current_city || person.current_state) && (
+            <p className="text-xs text-white/80 text-right shrink-0">
+              {[person.current_city, person.current_state].filter(Boolean).join(', ')}
+            </p>
+          )}
+        </div>
+      )}
 
       {memberCount !== null && (
-        <Link
-          to="/directory"
-          className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
-        >
-          <span className="font-heading text-3xl font-bold leading-tight">{memberCount}</span>
-          <span className="block text-sm text-[var(--color-text-muted)]">
-            members in the directory
-          </span>
-        </Link>
+        <div className="w-full grid grid-cols-2 gap-3">
+          <Link
+            to="/directory"
+            className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
+          >
+            <span className="font-heading text-3xl font-bold leading-tight">{memberCount}</span>
+            <span className="block text-sm text-[var(--color-text-muted)]">Members</span>
+          </Link>
+        </div>
       )}
 
       {completion && (
@@ -90,9 +108,11 @@ export function Dashboard() {
       )}
 
       <div className="flex gap-3">
+        {/* Outline, not accent: the membership card above is this screen's
+            one vermilion element (design system rule, context doc §4). */}
         <Link
           to="/profile/edit"
-          className="rounded-lg bg-[var(--color-accent)] text-white font-medium px-4 py-2 text-sm hover:bg-[var(--color-accent-hover)] transition-colors"
+          className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
         >
           Edit profile
         </Link>
