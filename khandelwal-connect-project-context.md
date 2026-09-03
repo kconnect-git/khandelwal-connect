@@ -6,7 +6,7 @@ This document captures all product, design, and technical decisions made during 
 
 ## 0. Current status (read this first)
 
-**Phase 0 and Phase 1 are both complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`** before starting Phase 2. This section is a short pointer, not the source of truth for current state.
+**Phase 0, Phase 1, and Phase 2 are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`** and then **`phase-2-summary.md`** before starting Phase 3. This section is a short pointer, not the source of truth for current state.
 
 Phase 0 (backend foundation):
 - ✅ Supabase project created (region: Singapore), email auth + Resend SMTP, OTP email template edited to show the 6-digit code
@@ -24,12 +24,13 @@ Phase 1 (identity & signup):
 - ✅ Header user menu (initials avatar, member ID, log out) — not in the original plan, added during Phase 1
 - ✅ Per-member code system (`KHA-<state>-<4 digits>`) — also not in the original plan, see `phase-1-summary.md`
 
-**Not yet started — this is Phase 2 (see Section 9):**
-- Family tree sub-forms (parents, grandparents, spouse, children, siblings) writing to `people.father_id`/`mother_id`/`spouse_id`
-- Family tree overview screen with drill-in navigation
-- RLS policies for family-tree visibility (today `people` RLS only allows self-read/update — Phase 2 needs a real policy for reading relations, not just your own row)
+Phase 2 (family details — **a deliberately simplified version of the original Phase 2 plan**, see `phase-2-summary.md` §1 for exactly what changed and why):
+- ✅ "Family details" screen (father, mother, spouse, children, spouse's parents, maternal uncle) — each a plain-text name plus an optional member code, not a full recursive tree
+- ✅ Search-an-existing-registered-member flow (`search_registered_members` RPC) to link a relation to a real member by name/gotra/native-place match, or by member code directly
+- ✅ Invite-by-email for relatives who aren't registered yet (`send-family-invite` Edge Function via Resend) — a plain notification email, no auth account pre-created, nothing tracked
+- ❌ **Still not built** (deferred to a later phase): siblings, grandparents, a graph/visualization, RLS policies for reading other members' full rows, consent-based linking between two existing members' own rows. See `phase-2-summary.md` for why this was cut down and what a real family tree would still need.
 
-**Immediate next step:** read `phase-1-summary.md`, then start Phase 2 per Section 9 below.
+**Immediate next step:** read `phase-1-summary.md` and `phase-2-summary.md`, then plan Phase 3 (directory & business, Section 9).
 
 ---
 
@@ -102,9 +103,9 @@ Two source design documents were reviewed:
 
 ## 6. Data model
 
-> **This section is the original planning draft and is now stale for `people`.** Phase 1 renamed `district`/`state` to `current_district`/`current_state`, added `home_address`, `state_code`, and `member_code` (plus two SQL functions). See `phase-1-summary.md` for the actual current DDL — treat what's below as historical context for *why* the table looks the way it does, not as truth.
+> **This section is the original planning draft and is now stale for `people`.** Phase 1 renamed `district`/`state` to `current_district`/`current_state`, added `home_address`, `state_code`, and `member_code` (plus two SQL functions). Phase 2 added plain-text name + optional member-code pairs for father/mother/spouse/maternal-uncle/spouse's-parents, plus a `children` table. See `phase-1-summary.md` and `phase-2-summary.md` for the actual current DDL — treat what's below as historical context for *why* the table looks the way it does, not as truth.
 
-Core principle: the family tree is **one self-referencing `people` table**, not six separate tables per the six design-doc sub-screens (Ancestral roots, Parents, Grandparents, Spouse, Children, Siblings). Grandparents, for example, fall out of the schema automatically via `father_id.father_id` — no special-cased screen logic needed per generation.
+Core principle (**partially superseded — see `phase-2-summary.md` §1**): the family tree is **one self-referencing `people` table**, not six separate tables per the six design-doc sub-screens (Ancestral roots, Parents, Grandparents, Spouse, Children, Siblings). Grandparents, for example, fall out of the schema automatically via `father_id.father_id` — no special-cased screen logic needed per generation. Phase 2 shipped a simpler, non-graph version of this instead (plain text + optional link, no placeholder rows for unregistered relatives); a real graph with grandparents/siblings derived this way is still future work, not yet built.
 
 Planned core tables (not final DDL — write this in Phase 0):
 
@@ -211,11 +212,13 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 - [x] *(added, not originally planned)* header user menu, per-member code system, mandatory locked `+91` mobile number
 - **Exit criteria**: new member can sign up, verify, see their own dashboard — met. Full details in `phase-1-summary.md`
 
-### Phase 2 — Family tree (Weeks 3–4)
-- Ancestral roots, parents, grandparents, spouse & family, children, siblings sub-forms, all writing to `people`
-- Family tree overview screen with drill-in navigation
-- RLS policies for family-tree visibility proven here (reused later for matrimony)
-- **Exit criteria**: member can build full family tree, see it rendered on overview
+### Phase 2 — Family details (Weeks 3–4) — **done, scope reduced from original plan**
+- ✅ Father/mother/spouse/children/spouse's-parents/maternal-uncle capture, each a plain-text name plus an optional member code linking to a real registered member
+- ✅ Search-an-existing-member flow to avoid duplicate/ambiguous entries where possible
+- ✅ Invite-by-email for relatives not yet registered
+- ❌ Not done, deferred: grandparents, siblings, a tree visualization/overview screen, RLS for reading other members' full rows (nothing needed one, since everything is denormalized onto the caller's own row)
+- See `phase-2-summary.md` for the full account of what shipped and why the scope changed
+- **Exit criteria (revised)**: member can record their immediate family's names/member-codes and invite unregistered relatives by email — met
 
 ### Phase 3 — Directory & business (Week 5)
 - Directory list with search + filter chips (location/gotra/profession/mandal)
