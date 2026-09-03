@@ -103,13 +103,17 @@ export function FamilyDetails() {
       </p>
 
       <div className="w-full flex flex-col gap-4">
+        {/* No gotraHint here (it used to be passed for father only): the RPC
+            applies it as an exact match, so any spelling/whitespace variance
+            in the father's own row made his search silently return nothing
+            while every other slot worked. Results show each candidate's
+            gotra, so the user can disambiguate visually instead. */}
         <RelationField
           key={`father-${person.updated_at}`}
           label="Father"
           slot="father"
           initialName={person.father_name ?? ''}
           initialMemberCode={person.father_member_code ?? ''}
-          gotraHint={person.gotra ?? undefined}
         />
         <RelationField
           key={`mother-${person.updated_at}`}
