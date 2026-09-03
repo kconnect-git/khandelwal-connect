@@ -15,6 +15,7 @@ import { StepPersonal } from './StepPersonal'
 import { StepLocation } from './StepLocation'
 import { StepGotraBackground } from './StepGotraBackground'
 import { ProfileLoadError } from '../../components/guards/ProfileLoadError'
+import { useProfileRefresh } from '../../context/ProfileRefreshContext'
 
 const BLANK_FORM: PersonFormValues = {
   full_name: '',
@@ -55,6 +56,7 @@ type Status = 'loading' | 'ready' | 'anonymous' | 'done' | 'error'
 
 export function ProfileWizard() {
   const navigate = useNavigate()
+  const { triggerRefresh } = useProfileRefresh()
   const [status, setStatus] = useState<Status>('loading')
   const [authUserId, setAuthUserId] = useState<string | null>(null)
   const [existingPerson, setExistingPerson] = useState<Person | null>(null)
@@ -153,6 +155,7 @@ export function ProfileWizard() {
         if (rpcError) throw rpcError
         console.log('[ProfileWizard] onboarding complete, member code', memberCode)
 
+        triggerRefresh()
         navigate('/dashboard', { replace: true })
         return
       }
@@ -160,6 +163,9 @@ export function ProfileWizard() {
       const patch = formValuesToPatch(pickStepValues(form, step))
       const saved = await saveOwnPerson(patch, existingPerson, authUserId)
       setExistingPerson(saved)
+      // Header initials come from full_name -- refresh so a name typed in
+      // step 1 shows up without leaving /onboarding.
+      triggerRefresh()
       setStep((step + 1) as WizardStep)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong saving your details.')

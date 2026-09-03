@@ -21,9 +21,10 @@ type FieldMeta = {
   label: string
   requiredForWizard: boolean
   // Whether any screen shipped so far lets the user actually fill this in.
-  // Family tree (Phase 2) and photo upload (later) fields count toward
-  // completion but have no editable UI yet -- surfaced separately so the
-  // completion indicator doesn't read as "stuck" or broken.
+  // Fields that count toward completion but have no editable UI yet are
+  // surfaced separately so the completion indicator doesn't read as "stuck"
+  // or broken. (As of Phase 3a everything is editable; the mechanism stays
+  // for future fields.)
   editableNow: boolean
 }
 
@@ -43,12 +44,7 @@ export const PROFILE_FIELDS: FieldMeta[] = [
   { key: 'father_name', label: 'Father (family details)', requiredForWizard: false, editableNow: true },
   { key: 'mother_name', label: 'Mother (family details)', requiredForWizard: false, editableNow: true },
   { key: 'spouse_name', label: 'Spouse (family details)', requiredForWizard: false, editableNow: true },
-  {
-    key: 'profile_photo_url',
-    label: 'Profile photo',
-    requiredForWizard: false,
-    editableNow: false,
-  },
+  { key: 'profile_photo_url', label: 'Profile photo', requiredForWizard: false, editableNow: true },
 ]
 
 export type ProfileCompletion = {

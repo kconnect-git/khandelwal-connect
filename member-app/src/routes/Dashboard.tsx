@@ -3,11 +3,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { getOwnPerson } from '../lib/people'
 import { getProfileCompletion } from '../lib/profileCompletion'
+import { listDirectory } from '../lib/directory'
 import type { Person } from '../types/database'
 
 export function Dashboard() {
   const navigate = useNavigate()
   const [person, setPerson] = useState<Person | null>(null)
+  const [memberCount, setMemberCount] = useState<number | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
@@ -27,6 +29,12 @@ export function Dashboard() {
     }
 
     load()
+    listDirectory({ limit: 1 })
+      .then((page) => {
+        if (!cancelled) setMemberCount(page.length > 0 ? page[0].total_count : 0)
+      })
+      .catch((err) => console.error('[Dashboard] failed to load member count', err))
+
     return () => {
       cancelled = true
     }
@@ -46,9 +54,20 @@ export function Dashboard() {
         Welcome{person?.full_name ? `, ${person.full_name}` : ''}
       </h1>
       <p className="text-[var(--color-text-muted)]">
-        Your dashboard is coming together — family tree, directory, events, and more will land
-        here in the next phases.
+        Your dashboard is coming together — events and more will land here in the next phases.
       </p>
+
+      {memberCount !== null && (
+        <Link
+          to="/directory"
+          className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span className="font-heading text-3xl font-bold leading-tight">{memberCount}</span>
+          <span className="block text-sm text-[var(--color-text-muted)]">
+            members in the directory
+          </span>
+        </Link>
+      )}
 
       {completion && (
         <div className="w-full flex flex-col gap-2">
@@ -76,12 +95,6 @@ export function Dashboard() {
           className="rounded-lg bg-[var(--color-accent)] text-white font-medium px-4 py-2 text-sm hover:bg-[var(--color-accent-hover)] transition-colors"
         >
           Edit profile
-        </Link>
-        <Link
-          to="/family-details"
-          className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
-        >
-          Family details
         </Link>
         <button
           type="button"

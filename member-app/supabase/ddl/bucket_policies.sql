@@ -12,6 +12,16 @@ create policy "public profile photo read"
   on storage.objects for select
   using (bucket_id = 'profile-photos');
 
+-- Phase 3a: re-uploading a photo replaces the file, so owners also need
+-- update + delete on their own folder (see migration 0010).
+create policy "own profile photo update"
+  on storage.objects for update
+  using (bucket_id = 'profile-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "own profile photo delete"
+  on storage.objects for delete
+  using (bucket_id = 'profile-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+
 -- business-media: public read, owner-only upload
 create policy "own business media upload"
   on storage.objects for insert

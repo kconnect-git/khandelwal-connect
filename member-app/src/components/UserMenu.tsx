@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
+import { Avatar } from './Avatar'
 
 type UserMenuProps = {
-  initials: string
+  fullName: string | null | undefined
+  photoUrl?: string | null
   memberCode?: string | null
   onLogout: () => void
   loggingOut?: boolean
 }
 
-export function UserMenu({ initials, memberCode, onLogout, loggingOut }: UserMenuProps) {
+export function UserMenu({ fullName, photoUrl, memberCode, onLogout, loggingOut }: UserMenuProps) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -39,9 +41,9 @@ export function UserMenu({ initials, memberCode, onLogout, loggingOut }: UserMen
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Account menu"
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-accent)] text-white text-xs font-semibold hover:bg-[var(--color-accent-hover)] transition-colors"
+        className="flex items-center justify-center rounded-full hover:opacity-90 transition-opacity"
       >
-        {initials}
+        <Avatar name={fullName} photoUrl={photoUrl} size={32} />
       </button>
 
       {open && (

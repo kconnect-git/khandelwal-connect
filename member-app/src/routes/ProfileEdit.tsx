@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import {
@@ -9,14 +9,18 @@ import {
   type PersonFormValues,
 } from '../lib/people'
 import { getProfileCompletion } from '../lib/profileCompletion'
+import { removeProfilePhoto, uploadProfilePhoto } from '../lib/profilePhoto'
 import type { Person } from '../types/database'
 import { validateStep } from './wizard/validation'
 import { StepPersonal } from './wizard/StepPersonal'
 import { StepLocation } from './wizard/StepLocation'
 import { StepGotraBackground } from './wizard/StepGotraBackground'
 import { ProfileLoadError } from '../components/guards/ProfileLoadError'
+import { Avatar } from '../components/Avatar'
+import { useProfileRefresh } from '../context/ProfileRefreshContext'
 
 export function ProfileEdit() {
+  const { triggerRefresh } = useProfileRefresh()
   const [person, setPerson] = useState<Person | null>(null)
   const [form, setForm] = useState<PersonFormValues | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -24,6 +28,10 @@ export function ProfileEdit() {
   const [saving, setSaving] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loadAttempt, setLoadAttempt] = useState(0)
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -37,6 +45,7 @@ export function ProfileEdit() {
         const loaded = await getOwnPerson(session.user.id)
         if (cancelled || !loaded) return
 
+        setAuthUserId(session.user.id)
         setPerson(loaded)
         setForm(personToFormValues(loaded))
       } catch (err) {
@@ -73,6 +82,37 @@ export function ProfileEdit() {
     setSavedMessage(null)
   }
 
+  async function handlePhotoSelected(file: File | undefined) {
+    if (!file || !person || !authUserId) return
+    setPhotoBusy(true)
+    setPhotoError(null)
+    try {
+      const updated = await uploadProfilePhoto(file, authUserId, person)
+      setPerson(updated)
+      triggerRefresh()
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Something went wrong uploading the photo.')
+    } finally {
+      setPhotoBusy(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function handleRemovePhoto() {
+    if (!person) return
+    setPhotoBusy(true)
+    setPhotoError(null)
+    try {
+      const updated = await removeProfilePhoto(person)
+      setPerson(updated)
+      triggerRefresh()
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Something went wrong removing the photo.')
+    } finally {
+      setPhotoBusy(false)
+    }
+  }
+
   async function handleSave() {
     if (!form || !person) return
 
@@ -91,6 +131,7 @@ export function ProfileEdit() {
       setPerson(updated)
       setForm(personToFormValues(updated))
       setSavedMessage('Saved.')
+      triggerRefresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong saving your changes.')
     } finally {
@@ -112,14 +153,50 @@ export function ProfileEdit() {
         </Link>
       </div>
 
+      <div className="w-full flex items-center gap-4">
+        <Avatar name={person.full_name} photoUrl={person.profile_photo_url} size={64} />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={photoBusy}
+            className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] disabled:opacity-60 transition-colors"
+          >
+            {photoBusy
+              ? 'Working…'
+              : person.profile_photo_url
+                ? 'Change photo'
+                : 'Add photo'}
+          </button>
+          {person.profile_photo_url && (
+            <button
+              type="button"
+              onClick={handleRemovePhoto}
+              disabled={photoBusy}
+              className="rounded-lg px-3 py-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-60 transition-colors"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => handlePhotoSelected(e.target.files?.[0])}
+        />
+      </div>
+      {photoError && <p className="text-sm text-[var(--color-accent)]">{photoError}</p>}
+
       <div className="flex flex-col gap-1">
         <p className="text-sm text-[var(--color-text-muted)]">
           {completion.completed}/{completion.total} fields · {completion.percent}% complete
         </p>
         {completion.missingNotYetEditable.length > 0 && (
           <p className="text-sm text-[var(--color-text-muted)]">
-            {completion.missingNotYetEditable.map((f) => f.label).join(', ')} aren't available to
-            fill in yet — they arrive with the photo upload feature in a later update.
+            {completion.missingNotYetEditable.map((f) => f.label).join(', ')} arrive in a later
+            update.
           </p>
         )}
       </div>

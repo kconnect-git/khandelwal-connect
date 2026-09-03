@@ -117,6 +117,53 @@ export type Database = {
         }
         Returns: undefined
       }
+      list_directory: {
+        Args: {
+          p_search?: string | null
+          p_state?: string | null
+          p_city?: string | null
+          p_gotra?: string | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: {
+          id: string
+          full_name: string
+          gotra: string | null
+          native_place: string | null
+          current_city: string | null
+          current_state: string | null
+          member_code: string
+          profile_photo_url: string | null
+          total_count: number
+        }[]
+      }
+      get_member_profile: {
+        Args: {
+          p_person_id: string
+        }
+        Returns: {
+          id: string
+          full_name: string
+          gotra: string | null
+          native_place: string | null
+          current_city: string | null
+          current_district: string | null
+          current_state: string | null
+          member_code: string
+          education: string | null
+          marital_status: string | null
+          mobile_number: string | null
+          profile_photo_url: string | null
+        }[]
+      }
+      directory_filter_options: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          kind: string
+          value: string
+        }[]
+      }
     }
     Enums: Record<string, never>
     CompositeTypes: Record<string, never>
