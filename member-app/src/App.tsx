@@ -12,6 +12,7 @@ import { VerifyOtp } from './routes/VerifyOtp'
 import { ProfileWizard } from './routes/wizard/ProfileWizard'
 import { Dashboard } from './routes/Dashboard'
 import { ProfileEdit } from './routes/ProfileEdit'
+import { FamilyDetails } from './routes/FamilyDetails'
 
 function getInitials(fullName: string | null | undefined): string {
   const words = (fullName ?? '').trim().split(/\s+/).filter(Boolean)
@@ -86,6 +87,14 @@ export default function App() {
               element={
                 <AuthGate key="profile-edit" requireComplete>
                   <ProfileEdit />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/family-details"
+              element={
+                <AuthGate key="family-details" requireComplete>
+                  <FamilyDetails />
                 </AuthGate>
               }
             />

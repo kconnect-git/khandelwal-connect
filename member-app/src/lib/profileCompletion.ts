@@ -11,9 +11,9 @@ export type ProfileFieldKey =
   | 'gotra'
   | 'marital_status'
   | 'education'
-  | 'father_id'
-  | 'mother_id'
-  | 'spouse_id'
+  | 'father_name'
+  | 'mother_name'
+  | 'spouse_name'
   | 'profile_photo_url'
 
 type FieldMeta = {
@@ -40,9 +40,9 @@ export const PROFILE_FIELDS: FieldMeta[] = [
   { key: 'gotra', label: 'Gotra', requiredForWizard: true, editableNow: true },
   { key: 'marital_status', label: 'Marital status', requiredForWizard: true, editableNow: true },
   { key: 'education', label: 'Education', requiredForWizard: true, editableNow: true },
-  { key: 'father_id', label: "Father (family tree)", requiredForWizard: false, editableNow: false },
-  { key: 'mother_id', label: "Mother (family tree)", requiredForWizard: false, editableNow: false },
-  { key: 'spouse_id', label: 'Spouse (family tree)', requiredForWizard: false, editableNow: false },
+  { key: 'father_name', label: 'Father (family details)', requiredForWizard: false, editableNow: true },
+  { key: 'mother_name', label: 'Mother (family details)', requiredForWizard: false, editableNow: true },
+  { key: 'spouse_name', label: 'Spouse (family details)', requiredForWizard: false, editableNow: true },
   {
     key: 'profile_photo_url',
     label: 'Profile photo',

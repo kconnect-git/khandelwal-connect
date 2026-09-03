@@ -6,6 +6,7 @@ alter table matrimony_profiles enable row level security;
 alter table matrimony_interests enable row level security;
 alter table dues enable row level security;
 alter table admin_audit_log enable row level security;
+alter table children enable row level security;
 
 -- placeholder: users can read and edit only their own people row for now
 create policy "own row read" on people for select
@@ -14,5 +15,18 @@ create policy "own row update" on people for update
   using (auth.uid() = auth_user_id);
 create policy "own row insert" on people for insert
   with check (auth.uid() = auth_user_id);
+
+-- Phase 2 (family details): children is multi-valued so it needs its own
+-- table. Scoped by parent_person_id back to the caller's own people row --
+-- no change needed to the people policies above, since everything the
+-- family-details screen displays is denormalized onto the caller's own row.
+create policy "own children read" on children for select
+  using (parent_person_id in (select id from people where auth.uid() = auth_user_id));
+create policy "own children insert" on children for insert
+  with check (parent_person_id in (select id from people where auth.uid() = auth_user_id));
+create policy "own children update" on children for update
+  using (parent_person_id in (select id from people where auth.uid() = auth_user_id));
+create policy "own children delete" on children for delete
+  using (parent_person_id in (select id from people where auth.uid() = auth_user_id));
 
 -- everything else stays fully closed until you write real policies for it

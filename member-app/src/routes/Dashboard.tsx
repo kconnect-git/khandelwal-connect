@@ -77,6 +77,12 @@ export function Dashboard() {
         >
           Edit profile
         </Link>
+        <Link
+          to="/family-details"
+          className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
+        >
+          Family details
+        </Link>
         <button
           type="button"
           onClick={handleLogout}

@@ -119,8 +119,7 @@ export function ProfileEdit() {
         {completion.missingNotYetEditable.length > 0 && (
           <p className="text-sm text-[var(--color-text-muted)]">
             {completion.missingNotYetEditable.map((f) => f.label).join(', ')} aren't available to
-            fill in yet — they arrive with the family tree and photo upload features in a later
-            update.
+            fill in yet — they arrive with the photo upload feature in a later update.
           </p>
         )}
       </div>
