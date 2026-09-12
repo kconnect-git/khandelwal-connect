@@ -103,6 +103,14 @@ export function BusinessDetail() {
   const isOwner = ownId !== null && ownId === business.owner_id
   const phoneDigits = (business.contact_phone ?? '').replace(/\D/g, '')
   const subtitle = businessMetaLine(business)
+  const officeAddress =
+    [business.address_line1, business.address_line2].filter(Boolean).join(', ') || null
+  const socialLinks = [
+    { label: 'Facebook', url: business.facebook_url },
+    { label: 'Instagram', url: business.instagram_url },
+    { label: 'LinkedIn', url: business.linkedin_url },
+    { label: 'YouTube', url: business.youtube_url },
+  ].filter((link): link is { label: string; url: string } => Boolean(link.url))
 
   return (
     <div className="flex-1 flex flex-col gap-6 px-5 py-6 max-w-2xl mx-auto w-full">
@@ -125,7 +133,7 @@ export function BusinessDetail() {
 
       {isOwner ? (
         <Link
-          to="/businesses/mine"
+          to="/profile?tab=business"
           className="self-start rounded-full bg-[var(--color-accent)] text-white font-semibold px-6 py-2.5 text-sm hover:bg-[var(--color-accent-hover)] transition-colors"
         >
           Edit listing
@@ -177,13 +185,39 @@ export function BusinessDetail() {
       <Section
         title="Details"
         rows={[
-          { label: 'Category', value: business.category },
+          { label: 'Brand', value: business.brand_name },
+          { label: 'Industry', value: business.category },
+          { label: 'Business type', value: business.business_type },
+          { label: 'Product / service', value: business.primary_product },
+          { label: 'Office address', value: officeAddress },
           { label: 'City', value: business.city },
           { label: 'State', value: business.state },
           { label: 'Contact', value: business.contact_phone },
+          { label: 'Email', value: business.business_email },
           { label: 'Website', value: business.website ? displayUrl(business.website) : null },
         ]}
       />
+
+      {socialLinks.length > 0 && (
+        <section className="w-full flex flex-col gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
+            Links
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {socialLinks.map((link) => (
+              <a
+                key={link.label}
+                href={link.url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full border border-[var(--color-border)] px-4 py-1.5 text-sm hover:border-[var(--color-text-muted)] transition-colors"
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="w-full flex flex-col gap-1">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">

@@ -22,6 +22,12 @@ export type ChildRecord = {
   child_id: string | null
   child_mobile_number: string | null
   child_dob: string | null
+  relation: string | null
+  education: string | null
+  profession: string | null
+  marital_status: string | null
+  spouse_name: string | null
+  blood_group: string | null
 }
 
 /** Optional extras the caller records about a relative -- their own entry,
@@ -35,7 +41,51 @@ export type RelativeContact = {
 
 export const EMPTY_RELATIVE_CONTACT: RelativeContact = { mobileNumber: '', dob: '' }
 
+/** Extra details captured for the spouse slot only (0017). Empty = not given. */
+export type RelationDetails = {
+  email: string
+  profession: string
+  bloodGroup: string
+}
+
+export const EMPTY_RELATION_DETAILS: RelationDetails = { email: '', profession: '', bloodGroup: '' }
+
+/** Extra details per child (0017). Empty = not given. */
+export type ChildDetails = {
+  relation: string
+  education: string
+  profession: string
+  maritalStatus: string
+  spouseName: string
+  bloodGroup: string
+}
+
+export const EMPTY_CHILD_DETAILS: ChildDetails = {
+  relation: '',
+  education: '',
+  profession: '',
+  maritalStatus: '',
+  spouseName: '',
+  bloodGroup: '',
+}
+
+export function childDetailsFromRecord(child: ChildRecord): ChildDetails {
+  return {
+    relation: child.relation ?? '',
+    education: child.education ?? '',
+    profession: child.profession ?? '',
+    maritalStatus: child.marital_status ?? '',
+    spouseName: child.spouse_name ?? '',
+    bloodGroup: child.blood_group ?? '',
+  }
+}
+
 const RELATIVE_MOBILE_PATTERN = /^\+91[6-9]\d{9}$/
+
+/** Loose "something@something.tld" check, mirrored by
+ * normalize_optional_email on the server. Shared with the Contact tab and
+ * the business form. */
+export const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
 /** Client-side check mirroring the server's normalize_relative_mobile /
  * check_relative_dob, so the user gets a readable message before a round
@@ -56,10 +106,32 @@ export function validateRelativeContact(contact: RelativeContact): string | null
   return null
 }
 
+export function validateRelationDetails(details: RelationDetails): string | null {
+  const email = details.email.trim()
+  if (email.length > 0 && !EMAIL_PATTERN.test(email)) {
+    return 'Please enter a valid email address, or leave it blank.'
+  }
+  return null
+}
+
 function contactArgs(contact?: RelativeContact) {
   return {
     p_mobile_number: contact?.mobileNumber.trim() || null,
     p_dob: contact?.dob.trim() || null,
+  }
+}
+
+function childDetailArgs(details?: ChildDetails) {
+  return {
+    p_relation: details?.relation.trim() || null,
+    p_education: details?.education.trim() || null,
+    p_profession: details?.profession.trim() || null,
+    p_marital_status: details?.maritalStatus.trim() || null,
+    // Spouse name only makes sense for a married child -- drop it otherwise
+    // so a stale value doesn't linger after the status changes.
+    p_spouse_name:
+      details?.maritalStatus === 'Married' ? details.spouseName.trim() || null : null,
+    p_blood_group: details?.bloodGroup.trim() || null,
   }
 }
 
@@ -83,12 +155,16 @@ export async function saveFamilyRelation(
   name: string,
   memberCode?: string | null,
   contact?: RelativeContact,
+  details?: RelationDetails,
 ): Promise<void> {
   const { error } = await supabase.rpc('save_family_relation', {
     p_slot: slot,
     p_name: name,
     p_member_code: memberCode || null,
     ...contactArgs(contact),
+    p_email: details?.email.trim() || null,
+    p_profession: details?.profession.trim() || null,
+    p_blood_group: details?.bloodGroup.trim() || null,
   })
 
   if (error) throw error
@@ -119,8 +195,7 @@ export type FamilyNameCompletionFlags = {
   spouse_name: string | null
 }
 
-export async function getFamilyNameCompletionFlags(personId: string): Promise<FamilyNameCompletionFlags> {
-  const relations = await getFamilyRelations(personId)
+export function familyNameCompletionFlags(relations: FamilyRelationRow[]): FamilyNameCompletionFlags {
   const bySlot = new Map(relations.map((r) => [r.slot, r]))
   return {
     father_name: bySlot.get('father')?.related_name ?? null,
@@ -129,10 +204,16 @@ export async function getFamilyNameCompletionFlags(personId: string): Promise<Fa
   }
 }
 
+export async function getFamilyNameCompletionFlags(personId: string): Promise<FamilyNameCompletionFlags> {
+  return familyNameCompletionFlags(await getFamilyRelations(personId))
+}
+
 export async function getChildren(personId: string): Promise<ChildRecord[]> {
   const { data, error } = await supabase
     .from('children')
-    .select('id, child_name, child_member_code, child_id, child_mobile_number, child_dob')
+    .select(
+      'id, child_name, child_member_code, child_id, child_mobile_number, child_dob, relation, education, profession, marital_status, spouse_name, blood_group',
+    )
     .eq('parent_person_id', personId)
     .order('created_at', { ascending: true })
 
@@ -144,11 +225,13 @@ export async function addChild(
   name: string,
   memberCode?: string | null,
   contact?: RelativeContact,
+  details?: ChildDetails,
 ): Promise<string> {
   const { data, error } = await supabase.rpc('add_child', {
     p_name: name,
     p_member_code: memberCode || null,
     ...contactArgs(contact),
+    ...childDetailArgs(details),
   })
 
   if (error) throw error
@@ -160,12 +243,14 @@ export async function updateChild(
   name: string,
   memberCode?: string | null,
   contact?: RelativeContact,
+  details?: ChildDetails,
 ): Promise<void> {
   const { error } = await supabase.rpc('update_child', {
     p_child_row_id: childRowId,
     p_name: name,
     p_member_code: memberCode || null,
     ...contactArgs(contact),
+    ...childDetailArgs(details),
   })
 
   if (error) throw error

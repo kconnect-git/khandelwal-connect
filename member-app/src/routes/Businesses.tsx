@@ -146,7 +146,7 @@ export function Businesses() {
       </div>
 
       <Link
-        to="/businesses/mine"
+        to="/profile?tab=business"
         className="self-start rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
       >
         My businesses

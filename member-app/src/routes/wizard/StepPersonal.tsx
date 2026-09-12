@@ -16,12 +16,20 @@ type StepPersonalProps = {
 export function StepPersonal({ value, onChange }: StepPersonalProps) {
   return (
     <div className="flex flex-col gap-4">
-      <TextField
-        label="Full name"
-        required
-        value={value.full_name}
-        onChange={(v) => onChange({ full_name: v })}
-      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <TextField
+          label="First name"
+          required
+          value={value.first_name}
+          onChange={(v) => onChange({ first_name: v })}
+        />
+        <TextField
+          label="Last name"
+          required
+          value={value.last_name}
+          onChange={(v) => onChange({ last_name: v })}
+        />
+      </div>
       <SelectField
         label="Gender"
         required

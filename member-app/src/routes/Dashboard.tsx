@@ -136,7 +136,7 @@ export function Dashboard() {
         {/* Outline, not accent: the membership card above is this screen's
             one vermilion element (design system rule, context doc §4). */}
         <Link
-          to="/profile/edit"
+          to="/profile"
           className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
         >
           Edit profile

@@ -1,12 +1,12 @@
 import { supabase } from '../utils/supabase'
 import { compressImage } from './profilePhoto'
+import { EMAIL_PATTERN } from './familyDetails'
 import type { BusinessRow } from '../types/database'
 
 const BUCKET = 'business-media'
 
-/** A listing as returned by list_businesses / get_business: the business
- * row plus the owner's directory-tier fields joined in. */
-export type BusinessListing = {
+/** The columns every listing RPC returns (cards). */
+export type BusinessCard = {
   id: string
   name: string
   category: string | null
@@ -22,7 +22,22 @@ export type BusinessListing = {
   owner_member_code: string
 }
 
-export type BusinessListingPage = BusinessListing & { total_count: number }
+export type BusinessListingPage = BusinessCard & { total_count: number }
+
+/** One listing as returned by get_business: the card fields plus the
+ * richer Phase 3c detail columns (0017). */
+export type BusinessListing = BusinessCard & {
+  brand_name: string | null
+  address_line1: string | null
+  address_line2: string | null
+  business_email: string | null
+  primary_product: string | null
+  business_type: string | null
+  facebook_url: string | null
+  instagram_url: string | null
+  linkedin_url: string | null
+  youtube_url: string | null
+}
 
 export type MemberBusiness = {
   id: string
@@ -41,50 +56,86 @@ export type BusinessFilterOptions = {
 /** Editable fields, as form strings. Empty string means "not given". */
 export type BusinessFormValues = {
   name: string
+  brand_name: string
   category: string
+  business_type: string
+  primary_product: string
   description: string
+  address_line1: string
+  address_line2: string
   city: string
   state: string
   contact_phone: string
+  business_email: string
   website: string
+  facebook_url: string
+  instagram_url: string
+  linkedin_url: string
+  youtube_url: string
 }
 
 export const EMPTY_BUSINESS_FORM: BusinessFormValues = {
   name: '',
+  brand_name: '',
   category: '',
+  business_type: '',
+  primary_product: '',
   description: '',
+  address_line1: '',
+  address_line2: '',
   city: '',
   state: '',
   contact_phone: '',
+  business_email: '',
   website: '',
+  facebook_url: '',
+  instagram_url: '',
+  linkedin_url: '',
+  youtube_url: '',
 }
 
 export function businessToFormValues(row: BusinessRow): BusinessFormValues {
   return {
     name: row.name ?? '',
+    brand_name: row.brand_name ?? '',
     category: row.category ?? '',
+    business_type: row.business_type ?? '',
+    primary_product: row.primary_product ?? '',
     description: row.description ?? '',
+    address_line1: row.address_line1 ?? '',
+    address_line2: row.address_line2 ?? '',
     city: row.city ?? '',
     state: row.state ?? '',
     contact_phone: row.contact_phone ?? '',
+    business_email: row.business_email ?? '',
     website: row.website ?? '',
+    facebook_url: row.facebook_url ?? '',
+    instagram_url: row.instagram_url ?? '',
+    linkedin_url: row.linkedin_url ?? '',
+    youtube_url: row.youtube_url ?? '',
   }
 }
 
 const PHONE_PATTERN = /^\+91[6-9]\d{9}$/
 
-/** Mirrors the DB check constraints (0014) so the user gets a readable
+/** Mirrors the DB check constraints (0014/0017) so the user gets a readable
  * message before a round trip. */
 export function validateBusiness(values: BusinessFormValues): string | null {
   if (values.name.trim().length === 0) return 'Business name is required.'
-  if (values.category.trim().length === 0) return 'Please pick a category.'
+  if (values.category.trim().length === 0) return 'Please pick an industry type.'
   const phone = values.contact_phone.trim()
   if (phone.length > 0 && !PHONE_PATTERN.test(phone)) {
     return 'Please enter a valid 10-digit contact number, or leave it blank.'
   }
+  const email = values.business_email.trim()
+  if (email.length > 0 && !EMAIL_PATTERN.test(email)) {
+    return 'Please enter a valid business email, or leave it blank.'
+  }
   return null
 }
 
+/** `https://` prefixed when missing. Used for the website and the four
+ * social links alike. */
 function normaliseWebsite(raw: string): string | null {
   const trimmed = raw.trim()
   if (trimmed.length === 0) return null
@@ -94,12 +145,22 @@ function normaliseWebsite(raw: string): string | null {
 function formValuesToPatch(values: BusinessFormValues): Partial<BusinessRow> {
   return {
     name: values.name.trim(),
+    brand_name: values.brand_name.trim() || null,
     category: values.category.trim() || null,
+    business_type: values.business_type.trim() || null,
+    primary_product: values.primary_product.trim() || null,
     description: values.description.trim() || null,
+    address_line1: values.address_line1.trim() || null,
+    address_line2: values.address_line2.trim() || null,
     city: values.city.trim() || null,
     state: values.state.trim() || null,
     contact_phone: values.contact_phone.trim() || null,
+    business_email: values.business_email.trim().toLowerCase() || null,
     website: normaliseWebsite(values.website),
+    facebook_url: normaliseWebsite(values.facebook_url),
+    instagram_url: normaliseWebsite(values.instagram_url),
+    linkedin_url: normaliseWebsite(values.linkedin_url),
+    youtube_url: normaliseWebsite(values.youtube_url),
   }
 }
 

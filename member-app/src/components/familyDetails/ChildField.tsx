@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { RelationSearchInput } from './RelationSearchInput'
 import { RelativeContactFields } from './RelativeContactFields'
+import { ChildDetailsFields } from './ChildDetailsFields'
 import { InviteControl } from './InviteControl'
 import {
   updateChild,
   removeChild,
   validateRelativeContact,
+  childDetailsFromRecord,
+  type ChildDetails,
   type ChildRecord,
   type RelativeContact,
 } from '../../lib/familyDetails'
@@ -22,6 +25,7 @@ export function ChildField({ child, onRemoved }: ChildFieldProps) {
     mobileNumber: child.child_mobile_number ?? '',
     dob: child.child_dob ?? '',
   })
+  const [details, setDetails] = useState<ChildDetails>(childDetailsFromRecord(child))
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -40,7 +44,7 @@ export function ChildField({ child, onRemoved }: ChildFieldProps) {
 
     setSaving(true)
     try {
-      await updateChild(child.id, name.trim(), memberCode.trim() || null, contact)
+      await updateChild(child.id, name.trim(), memberCode.trim() || null, contact, details)
       setSaved(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong saving this.')
@@ -85,6 +89,13 @@ export function ChildField({ child, onRemoved }: ChildFieldProps) {
         value={contact}
         onChange={(v) => {
           setContact(v)
+          setSaved(false)
+        }}
+      />
+      <ChildDetailsFields
+        value={details}
+        onChange={(v) => {
+          setDetails(v)
           setSaved(false)
         }}
       />

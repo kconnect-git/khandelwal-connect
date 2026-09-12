@@ -139,7 +139,7 @@ export function MemberProfile() {
 
       {isSelf ? (
         <Link
-          to="/profile/edit"
+          to="/profile"
           className="self-start rounded-full bg-[var(--color-accent)] text-white font-semibold px-6 py-2.5 text-sm hover:bg-[var(--color-accent-hover)] transition-colors"
         >
           Edit profile

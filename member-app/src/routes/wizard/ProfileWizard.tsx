@@ -18,7 +18,9 @@ import { ProfileLoadError } from '../../components/guards/ProfileLoadError'
 import { useProfileRefresh } from '../../context/ProfileRefreshContext'
 
 const BLANK_FORM: PersonFormValues = {
-  full_name: '',
+  first_name: '',
+  middle_name: '',
+  last_name: '',
   gender: '',
   dob: '',
   mobile_number: '',
@@ -37,6 +39,15 @@ const BLANK_FORM: PersonFormValues = {
   job_title: '',
   company_name: '',
   job_location: '',
+  blood_group: '',
+  secondary_email: '',
+  secondary_mobile: '',
+  residence_phone: '',
+  birth_place: '',
+  address_line2: '',
+  address_line3: '',
+  pincode: '',
+  date_of_marriage: '',
 }
 
 function pickStepValues(

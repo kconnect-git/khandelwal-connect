@@ -3,7 +3,11 @@ import { STATE_CODE_BY_NAME } from './formOptions'
 import type { Person } from '../types/database'
 
 export type PersonFormValues = {
-  full_name: string
+  // Name parts (0017). full_name is derived from these -- see
+  // composeFullName / the people_sync_full_name trigger.
+  first_name: string
+  middle_name: string
+  last_name: string
   gender: string
   dob: string
   mobile_number: string
@@ -22,11 +26,45 @@ export type PersonFormValues = {
   job_title: string
   company_name: string
   job_location: string
+  // Phase 3c Profile tabs (never in the wizard).
+  blood_group: string
+  secondary_email: string
+  secondary_mobile: string
+  residence_phone: string
+  birth_place: string
+  address_line2: string
+  address_line3: string
+  pincode: string
+  date_of_marriage: string
+}
+
+/** "First Middle Last" with blanks dropped -- same rule as the DB trigger. */
+export function composeFullName(first: string, middle: string, last: string): string {
+  return [first, middle, last]
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .join(' ')
+}
+
+/** Whole years since dob, or null when dob is blank/invalid. */
+export function ageFromDob(dob: string): number | null {
+  if (!dob) return null
+  const birth = new Date(dob)
+  if (Number.isNaN(birth.getTime())) return null
+  const now = new Date()
+  let age = now.getFullYear() - birth.getFullYear()
+  const beforeBirthday =
+    now.getMonth() < birth.getMonth() ||
+    (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())
+  if (beforeBirthday) age -= 1
+  return age < 0 ? null : age
 }
 
 export function personToFormValues(person: Person): PersonFormValues {
   return {
-    full_name: person.full_name ?? '',
+    first_name: person.first_name ?? '',
+    middle_name: person.middle_name ?? '',
+    last_name: person.last_name ?? '',
     gender: person.gender ?? '',
     dob: person.dob ?? '',
     mobile_number: person.mobile_number ?? '',
@@ -48,6 +86,15 @@ export function personToFormValues(person: Person): PersonFormValues {
     job_title: person.job_title ?? '',
     company_name: person.company_name ?? '',
     job_location: person.job_location ?? '',
+    blood_group: person.blood_group ?? '',
+    secondary_email: person.secondary_email ?? '',
+    secondary_mobile: person.secondary_mobile ?? '',
+    residence_phone: person.residence_phone ?? '',
+    birth_place: person.birth_place ?? '',
+    address_line2: person.address_line2 ?? '',
+    address_line3: person.address_line3 ?? '',
+    pincode: person.pincode ?? '',
+    date_of_marriage: person.date_of_marriage ?? '',
   }
 }
 
@@ -55,6 +102,18 @@ export function formValuesToPatch(values: Partial<PersonFormValues>): Partial<Pe
   const patch: Record<string, string | null> = {}
   for (const [key, value] of Object.entries(values)) {
     patch[key] = value === '' ? null : (value as string)
+  }
+  // Whenever a name part is being written, send the composed full_name too:
+  // the insert path needs it (full_name is NOT NULL) and it keeps the
+  // client's optimistic state right. The DB trigger recomposes from the
+  // row's actual parts afterwards, so this is never the last word.
+  if ('first_name' in values || 'middle_name' in values || 'last_name' in values) {
+    const composed = composeFullName(
+      values.first_name ?? '',
+      values.middle_name ?? '',
+      values.last_name ?? '',
+    )
+    if (composed) patch.full_name = composed
   }
   return patch as Partial<Person>
 }

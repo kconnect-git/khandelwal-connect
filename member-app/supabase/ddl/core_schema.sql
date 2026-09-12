@@ -66,12 +66,55 @@ create table people (
   job_title text,
   company_name text,
   job_location text,
+  -- Phase 3c (0017): the tabbed Profile page. Name parts are the editable
+  -- columns; full_name (above) is derived from them by the
+  -- people_sync_full_name trigger below and remains what every reader
+  -- (header, directory, search, invite email) uses. Everything else here is
+  -- in the never-exposed tier -- get_member_profile / list_directory don't
+  -- return any of it.
+  first_name text,
+  middle_name text,
+  last_name text,
+  blood_group text
+    check (blood_group is null
+           or blood_group in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')),
+  secondary_email text,
+  secondary_mobile text
+    check (secondary_mobile is null or secondary_mobile ~ '^\+91[6-9]\d{9}$'),
+  residence_phone text,
+  birth_place text,
+  -- home_address (above) doubles as address line 1.
+  address_line2 text,
+  address_line3 text,
+  pincode text
+    check (pincode is null or pincode ~ '^\d{6}$'),
+  date_of_marriage date,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   constraint people_auth_user_id_key unique (auth_user_id)
 );
 
 create index people_state_code_idx on people (state_code);
+
+-- (0017) full_name := "First Middle Last" whenever a name part is written.
+create or replace function people_sync_full_name()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.first_name is not null and length(trim(new.first_name)) > 0 then
+    new.full_name := concat_ws(' ',
+      nullif(trim(new.first_name), ''),
+      nullif(trim(new.middle_name), ''),
+      nullif(trim(new.last_name), ''));
+  end if;
+  return new;
+end;
+$$;
+
+create trigger people_sync_full_name
+  before insert or update of first_name, middle_name, last_name on people
+  for each row execute function people_sync_full_name();
 
 -- Children are multi-valued, so they get their own table rather than more
 -- columns on `people`. Same name + member_code + resolved-id pattern as the
@@ -84,6 +127,18 @@ create table children (
   child_id uuid references people(id),
   child_mobile_number text,
   child_dob date,
+  -- (0017) Profile > Children tab details.
+  relation text
+    check (relation is null or relation in ('Son', 'Daughter')),
+  education text,
+  profession text
+    check (profession is null
+           or profession in ('Business', 'Job', 'Student', 'Homemaker', 'Retired', 'Other')),
+  marital_status text,
+  spouse_name text,
+  blood_group text
+    check (blood_group is null
+           or blood_group in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')),
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -101,6 +156,14 @@ create table family_relations (
   related_id uuid references people(id),
   mobile_number text,
   dob date,
+  -- (0017) Generic per-slot columns; only the spouse card renders them.
+  email text,
+  profession text
+    check (profession is null
+           or profession in ('Business', 'Job', 'Student', 'Homemaker', 'Retired', 'Other')),
+  blood_group text
+    check (blood_group is null
+           or blood_group in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')),
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   unique (person_id, slot)
@@ -245,6 +308,23 @@ create table businesses (
     check (contact_phone is null or contact_phone ~ '^\+91[6-9]\d{9}$'),
   website text,
   logo_url text,
+  -- (0017) Profile > Business tab. `category` is the "industry type";
+  -- `city`/`state` are the office city/state. business_type is mirrored by
+  -- BUSINESS_TYPE_OPTIONS in src/lib/formOptions.ts.
+  brand_name text,
+  address_line1 text,
+  address_line2 text,
+  business_email text,
+  primary_product text,
+  business_type text
+    check (business_type is null or business_type in (
+      'Manufacturer', 'Wholesaler', 'Retailer', 'Distributor',
+      'Service provider', 'Professional practice', 'Other'
+    )),
+  facebook_url text,
+  instagram_url text,
+  linkedin_url text,
+  youtube_url text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -408,15 +488,38 @@ $$;
 revoke all on function normalize_relative_mobile(text) from public;
 revoke all on function check_relative_dob(date) from public;
 
+-- (0017) Blank -> null, otherwise a loose "something@something.tld" check.
+create or replace function normalize_optional_email(p_email text)
+returns text
+language plpgsql
+immutable
+as $$
+begin
+  if p_email is null or length(trim(p_email)) = 0 then
+    return null;
+  end if;
+  if trim(p_email) !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then
+    raise exception 'Please enter a valid email address';
+  end if;
+  return lower(trim(p_email));
+end;
+$$;
+
+revoke all on function normalize_optional_email(text) from public;
+
 -- Rewritten as an upsert into family_relations. Much shorter than the old
 -- 6-way if/elsif over 6x5 people columns -- adding a 7th slot here is a
 -- change to the check constraint above, not a new branch or new columns.
+-- (0017) email / profession / blood_group added (spouse card).
 create or replace function save_family_relation(
   p_slot text,
   p_name text,
   p_member_code text default null,
   p_mobile_number text default null,
-  p_dob date default null
+  p_dob date default null,
+  p_email text default null,
+  p_profession text default null,
+  p_blood_group text default null
 )
 returns void
 language plpgsql
@@ -445,30 +548,41 @@ begin
     p_member_code := null;
   end if;
 
-  insert into family_relations (person_id, slot, related_name, related_member_code, related_id, mobile_number, dob)
+  insert into family_relations (person_id, slot, related_name, related_member_code, related_id,
+                                mobile_number, dob, email, profession, blood_group)
   values (v_self_id, p_slot, p_name, p_member_code, v_matched_id,
-          normalize_relative_mobile(p_mobile_number), check_relative_dob(p_dob))
+          normalize_relative_mobile(p_mobile_number), check_relative_dob(p_dob),
+          normalize_optional_email(p_email), nullif(trim(p_profession), ''), nullif(trim(p_blood_group), ''))
   on conflict (person_id, slot) do update
     set related_name = excluded.related_name,
         related_member_code = excluded.related_member_code,
         related_id = excluded.related_id,
         mobile_number = excluded.mobile_number,
         dob = excluded.dob,
+        email = excluded.email,
+        profession = excluded.profession,
+        blood_group = excluded.blood_group,
         updated_at = now();
 end;
 $$;
 
-revoke all on function save_family_relation(text, text, text, text, date) from public;
-grant execute on function save_family_relation(text, text, text, text, date) to authenticated;
+revoke all on function save_family_relation(text, text, text, text, date, text, text, text) from public;
+grant execute on function save_family_relation(text, text, text, text, date, text, text, text) to authenticated;
 
 -- (0015) self-lookup simplified: the unique auth_user_id constraint (see
 -- the people table above) makes the old order-by-and-limit-1 tiebreak
--- unnecessary.
+-- unnecessary. (0017) six child-detail params added.
 create or replace function add_child(
   p_name text,
   p_member_code text default null,
   p_mobile_number text default null,
-  p_dob date default null
+  p_dob date default null,
+  p_relation text default null,
+  p_education text default null,
+  p_profession text default null,
+  p_marital_status text default null,
+  p_spouse_name text default null,
+  p_blood_group text default null
 )
 returns uuid
 language plpgsql
@@ -495,9 +609,13 @@ begin
     p_member_code := null;
   end if;
 
-  insert into children (parent_person_id, child_name, child_member_code, child_id, child_mobile_number, child_dob)
+  insert into children (parent_person_id, child_name, child_member_code, child_id,
+                        child_mobile_number, child_dob,
+                        relation, education, profession, marital_status, spouse_name, blood_group)
   values (v_self_id, p_name, p_member_code, v_matched_id,
-          normalize_relative_mobile(p_mobile_number), check_relative_dob(p_dob))
+          normalize_relative_mobile(p_mobile_number), check_relative_dob(p_dob),
+          nullif(trim(p_relation), ''), nullif(trim(p_education), ''), nullif(trim(p_profession), ''),
+          nullif(trim(p_marital_status), ''), nullif(trim(p_spouse_name), ''), nullif(trim(p_blood_group), ''))
   returning id into v_new_id;
 
   return v_new_id;
@@ -509,7 +627,13 @@ create or replace function update_child(
   p_name text,
   p_member_code text default null,
   p_mobile_number text default null,
-  p_dob date default null
+  p_dob date default null,
+  p_relation text default null,
+  p_education text default null,
+  p_profession text default null,
+  p_marital_status text default null,
+  p_spouse_name text default null,
+  p_blood_group text default null
 )
 returns void
 language plpgsql
@@ -539,6 +663,12 @@ begin
   set child_name = p_name, child_member_code = p_member_code, child_id = v_matched_id,
       child_mobile_number = normalize_relative_mobile(p_mobile_number),
       child_dob = check_relative_dob(p_dob),
+      relation = nullif(trim(p_relation), ''),
+      education = nullif(trim(p_education), ''),
+      profession = nullif(trim(p_profession), ''),
+      marital_status = nullif(trim(p_marital_status), ''),
+      spouse_name = nullif(trim(p_spouse_name), ''),
+      blood_group = nullif(trim(p_blood_group), ''),
       updated_at = now()
   where id = p_child_row_id and parent_person_id = v_self_id;
 
@@ -548,10 +678,10 @@ begin
 end;
 $$;
 
-revoke all on function add_child(text, text, text, date) from public;
-grant execute on function add_child(text, text, text, date) to authenticated;
-revoke all on function update_child(uuid, text, text, text, date) from public;
-grant execute on function update_child(uuid, text, text, text, date) to authenticated;
+revoke all on function add_child(text, text, text, date, text, text, text, text, text, text) from public;
+grant execute on function add_child(text, text, text, date, text, text, text, text, text, text) to authenticated;
+revoke all on function update_child(uuid, text, text, text, date, text, text, text, text, text, text) from public;
+grant execute on function update_child(uuid, text, text, text, date, text, text, text, text, text, text) to authenticated;
 
 -- Family invites (a "your father/spouse/etc. was invited" notification
 -- email) are sent by the send-family-invite Edge Function via Resend
@@ -746,8 +876,8 @@ $$;
 revoke all on function list_businesses(text, text, text, text, int, int) from public;
 grant execute on function list_businesses(text, text, text, text, int, int) to authenticated;
 
--- One listing, same columns (minus total_count). Zero rows if unknown or
--- the owner hasn't completed onboarding.
+-- One listing: the card columns plus the (0017) detail columns. Zero rows
+-- if unknown or the owner hasn't completed onboarding.
 create or replace function get_business(p_business_id uuid)
 returns table (
   id uuid,
@@ -759,6 +889,16 @@ returns table (
   contact_phone text,
   website text,
   logo_url text,
+  brand_name text,
+  address_line1 text,
+  address_line2 text,
+  business_email text,
+  primary_product text,
+  business_type text,
+  facebook_url text,
+  instagram_url text,
+  linkedin_url text,
+  youtube_url text,
   owner_id uuid,
   owner_name text,
   owner_photo_url text,
@@ -771,6 +911,9 @@ set search_path = public
 as $$
   select b.id, b.name, b.category, b.description, b.city, b.state,
          b.contact_phone, b.website, b.logo_url,
+         b.brand_name, b.address_line1, b.address_line2, b.business_email,
+         b.primary_product, b.business_type,
+         b.facebook_url, b.instagram_url, b.linkedin_url, b.youtube_url,
          p.id, p.full_name, p.profile_photo_url, p.member_code
   from businesses b
   join people p on p.id = b.owner_id

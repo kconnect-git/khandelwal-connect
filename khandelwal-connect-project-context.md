@@ -6,7 +6,7 @@ This document captures all product, design, and technical decisions made during 
 
 ## 0. Current status (read this first)
 
-**Phases 0, 1, 2, 3a, and 3b are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, and **`phase-3b-summary.md`** before starting Phase 4. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
+**Phases 0, 1, 2, 3a, 3b, and 3c are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, and **`phase-3c-summary.md`** before starting Phase 4. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
 
 Phase 0 (backend foundation):
 - ✅ Supabase project created (region: Singapore), email auth + Resend SMTP, OTP email template edited to show the 6-digit code
@@ -45,7 +45,14 @@ Phase 3b (occupation + business listings):
 - ✅ `businesses.type` dropped (superseded by `people.occupation_type`); fixed category list
 - ❌ Not built: listing moderation (→ Phase 5 admin), distributor/investor tags, logo galleries. See `phase-3b-summary.md`.
 
-**Immediate next step:** read the four phase summaries (especially `phase-3b-summary.md` §4–6), then plan Phase 4 (events).
+Phase 3c (tabbed Profile page — migration `0017`):
+- ✅ One `/profile` route with seven tabs (Personal · Contact · Cultural · Residence · Business · Spouse · Children) replaces Edit profile, Family details and My businesses; old paths redirect
+- ✅ Name split into first/middle/last (wizard step 1 now asks First + Last — the one approved exception to the "keep the wizard short" rule); `full_name` derived by a DB trigger so nothing that reads it changed
+- ✅ New per-member fields (blood group, secondary contacts, address lines, PIN, birth place, date of marriage), spouse extras (profession/email/blood group), child extras (relation/education/profession/marital status/spouse name/blood group), richer business listings (brand, office address, business email, product, business type, social links)
+- ✅ Per-tab Save that validates/writes only that tab's columns
+- ❌ Not built: exposing any of the new person fields to other members. See `phase-3c-summary.md`.
+
+**Immediate next step:** read the five phase summaries (especially `phase-3b-summary.md` §4–6 and `phase-3c-summary.md` §4), then plan Phase 4 (events).
 
 ---
 

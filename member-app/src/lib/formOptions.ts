@@ -28,6 +28,30 @@ export const OCCUPATION_OPTIONS: Option[] = [
   { value: 'Other', label: 'Other' },
 ]
 
+// Fixed lists mirrored by the 0017 check constraints on people /
+// family_relations / children (blood_group), children (relation) and
+// businesses (business_type).
+export const BLOOD_GROUP_OPTIONS: Option[] = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(
+  (value) => ({ value, label: value }),
+)
+
+export const CHILD_RELATION_OPTIONS: Option[] = [
+  { value: 'Son', label: 'Son' },
+  { value: 'Daughter', label: 'Daughter' },
+]
+
+// "Business type" = nature of the business. "Industry type" in the UI is
+// the existing `category` column (BUSINESS_CATEGORY_OPTIONS below).
+export const BUSINESS_TYPE_OPTIONS: Option[] = [
+  'Manufacturer',
+  'Wholesaler',
+  'Retailer',
+  'Distributor',
+  'Service provider',
+  'Professional practice',
+  'Other',
+].map((value) => ({ value, label: value }))
+
 // Fixed list, mirrored by businesses_category_check (migration 0014).
 export const BUSINESS_CATEGORY_OPTIONS: Option[] = [
   'Retail',

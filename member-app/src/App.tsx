@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { ThemeProvider } from './context/ThemeContext'
 import { ProfileRefreshProvider, useProfileRefresh } from './context/ProfileRefreshContext'
 import { ThemeToggle } from './components/ThemeToggle'
@@ -13,13 +13,11 @@ import { Signup } from './routes/Signup'
 import { VerifyOtp } from './routes/VerifyOtp'
 import { ProfileWizard } from './routes/wizard/ProfileWizard'
 import { Dashboard } from './routes/Dashboard'
-import { ProfileEdit } from './routes/ProfileEdit'
-import { FamilyDetails } from './routes/FamilyDetails'
+import { Profile } from './routes/Profile'
 import { Directory } from './routes/Directory'
 import { MemberProfile } from './routes/MemberProfile'
 import { Businesses } from './routes/Businesses'
 import { BusinessDetail } from './routes/BusinessDetail'
-import { MyBusinesses } from './routes/MyBusinesses'
 
 function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
@@ -95,20 +93,21 @@ export default function App() {
                 }
               />
               <Route
-                path="/profile/edit"
+                path="/profile"
                 element={
-                  <AuthGate key="profile-edit" requireComplete>
-                    <ProfileEdit />
+                  <AuthGate key="profile" requireComplete>
+                    <Profile />
                   </AuthGate>
                 }
               />
+              {/* Phase 3c: Edit profile, Family details and My businesses all
+                  folded into the tabbed Profile page. Old paths keep working
+                  for bookmarks / stale links. */}
+              <Route path="/profile/edit" element={<Navigate to="/profile" replace />} />
+              <Route path="/family-details" element={<Navigate to="/profile" replace />} />
               <Route
-                path="/family-details"
-                element={
-                  <AuthGate key="family-details" requireComplete>
-                    <FamilyDetails />
-                  </AuthGate>
-                }
+                path="/businesses/mine"
+                element={<Navigate to="/profile?tab=business" replace />}
               />
               <Route
                 path="/directory"
@@ -131,14 +130,6 @@ export default function App() {
                 element={
                   <AuthGate key="businesses" requireComplete>
                     <Businesses />
-                  </AuthGate>
-                }
-              />
-              <Route
-                path="/businesses/mine"
-                element={
-                  <AuthGate key="my-businesses" requireComplete>
-                    <MyBusinesses />
                   </AuthGate>
                 }
               />

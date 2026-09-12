@@ -1,7 +1,13 @@
 export type Person = {
   id: string
   auth_user_id: string | null
+  // full_name is derived from the three parts by the people_sync_full_name
+  // trigger (0017) -- it's the display column every reader uses; the
+  // parts are what the Profile page edits.
   full_name: string
+  first_name: string | null
+  middle_name: string | null
+  last_name: string | null
   gender: string | null
   dob: string | null
   gotra: string | null
@@ -28,6 +34,16 @@ export type Person = {
   job_title: string | null
   company_name: string | null
   job_location: string | null
+  // Phase 3c (0017): Profile tabs. All never exposed to other members.
+  blood_group: string | null
+  secondary_email: string | null
+  secondary_mobile: string | null
+  residence_phone: string | null
+  birth_place: string | null
+  address_line2: string | null
+  address_line3: string | null
+  pincode: string | null
+  date_of_marriage: string | null
   created_at: string
   updated_at: string
 }
@@ -40,6 +56,12 @@ export type ChildRow = {
   child_id: string | null
   child_mobile_number: string | null
   child_dob: string | null
+  relation: string | null
+  education: string | null
+  profession: string | null
+  marital_status: string | null
+  spouse_name: string | null
+  blood_group: string | null
   created_at: string
   updated_at: string
 }
@@ -61,6 +83,10 @@ export type FamilyRelationRow = {
   related_id: string | null
   mobile_number: string | null
   dob: string | null
+  // Generic columns (0017), only rendered on the spouse card.
+  email: string | null
+  profession: string | null
+  blood_group: string | null
   created_at: string
   updated_at: string
 }
@@ -76,6 +102,16 @@ export type BusinessRow = {
   contact_phone: string | null
   website: string | null
   logo_url: string | null
+  brand_name: string | null
+  address_line1: string | null
+  address_line2: string | null
+  business_email: string | null
+  primary_product: string | null
+  business_type: string | null
+  facebook_url: string | null
+  instagram_url: string | null
+  linkedin_url: string | null
+  youtube_url: string | null
   created_at: string
   updated_at: string
 }
@@ -146,6 +182,9 @@ export type Database = {
           p_member_code?: string | null
           p_mobile_number?: string | null
           p_dob?: string | null
+          p_email?: string | null
+          p_profession?: string | null
+          p_blood_group?: string | null
         }
         Returns: undefined
       }
@@ -155,6 +194,12 @@ export type Database = {
           p_member_code?: string | null
           p_mobile_number?: string | null
           p_dob?: string | null
+          p_relation?: string | null
+          p_education?: string | null
+          p_profession?: string | null
+          p_marital_status?: string | null
+          p_spouse_name?: string | null
+          p_blood_group?: string | null
         }
         Returns: string
       }
@@ -165,6 +210,12 @@ export type Database = {
           p_member_code?: string | null
           p_mobile_number?: string | null
           p_dob?: string | null
+          p_relation?: string | null
+          p_education?: string | null
+          p_profession?: string | null
+          p_marital_status?: string | null
+          p_spouse_name?: string | null
+          p_blood_group?: string | null
         }
         Returns: undefined
       }
@@ -263,6 +314,16 @@ export type Database = {
           contact_phone: string | null
           website: string | null
           logo_url: string | null
+          brand_name: string | null
+          address_line1: string | null
+          address_line2: string | null
+          business_email: string | null
+          primary_product: string | null
+          business_type: string | null
+          facebook_url: string | null
+          instagram_url: string | null
+          linkedin_url: string | null
+          youtube_url: string | null
           owner_id: string
           owner_name: string
           owner_photo_url: string | null

@@ -1,5 +1,6 @@
 export type ProfileFieldKey =
-  | 'full_name'
+  | 'first_name'
+  | 'last_name'
   | 'gender'
   | 'dob'
   | 'mobile_number'
@@ -30,7 +31,12 @@ type FieldMeta = {
 }
 
 export const PROFILE_FIELDS: FieldMeta[] = [
-  { key: 'full_name', label: 'Full name', requiredForWizard: true, editableNow: true },
+  { key: 'first_name', label: 'First name', requiredForWizard: true, editableNow: true },
+  // Step 1 validation requires a last name for new signups, but the
+  // wizard-complete gate deliberately doesn't: 0017 backfilled the name
+  // parts by splitting full_name, and a member with a single-word name
+  // would otherwise be bounced back into onboarding.
+  { key: 'last_name', label: 'Last name', requiredForWizard: false, editableNow: true },
   { key: 'gender', label: 'Gender', requiredForWizard: true, editableNow: true },
   { key: 'dob', label: 'Date of birth', requiredForWizard: true, editableNow: true },
   { key: 'mobile_number', label: 'Mobile number', requiredForWizard: true, editableNow: true },
