@@ -52,6 +52,12 @@ export const BUSINESS_TYPE_OPTIONS: Option[] = [
   'Other',
 ].map((value) => ({ value, label: value }))
 
+// Fixed list, mirrored by the visibility check constraint on events (0018).
+export const EVENT_VISIBILITY_OPTIONS: Option[] = [
+  { value: 'members', label: 'All members' },
+  { value: 'invite_only', label: 'Invite only' },
+]
+
 // Fixed list, mirrored by businesses_category_check (migration 0014).
 export const BUSINESS_CATEGORY_OPTIONS: Option[] = [
   'Retail',

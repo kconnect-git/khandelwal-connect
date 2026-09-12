@@ -18,6 +18,13 @@ import { Directory } from './routes/Directory'
 import { MemberProfile } from './routes/MemberProfile'
 import { Businesses } from './routes/Businesses'
 import { BusinessDetail } from './routes/BusinessDetail'
+import { Events } from './routes/Events'
+import { MyEvents } from './routes/MyEvents'
+import { EventNew } from './routes/EventNew'
+import { EventDetail } from './routes/EventDetail'
+import { AdminEvents } from './routes/AdminEvents'
+import { useIsAdmin } from './hooks/useIsAdmin'
+import { clearReturnTo } from './lib/returnTo'
 
 function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
@@ -32,9 +39,12 @@ function Layout({ children }: { children: React.ReactNode }) {
   // Nav only appears once onboarding is done -- an incomplete profile is
   // still locked to the wizard by AuthGate, so tabs would just bounce.
   const showNav = status.state === 'complete'
+  // Phase 4: admins get an extra item in the account menu (not a tab).
+  const isAdmin = useIsAdmin(showNav)
 
   async function handleLogout() {
     setLoggingOut(true)
+    clearReturnTo()
     await supabase.auth.signOut()
     setLoggingOut(false)
     navigate('/signup', { replace: true })
@@ -54,6 +64,7 @@ function Layout({ children }: { children: React.ReactNode }) {
               fullName={person.full_name}
               photoUrl={person.profile_photo_url}
               memberCode={person.member_code}
+              adminHref={isAdmin ? '/admin/events' : undefined}
               onLogout={handleLogout}
               loggingOut={loggingOut}
             />
@@ -138,6 +149,48 @@ export default function App() {
                 element={
                   <AuthGate key="business-detail" requireComplete>
                     <BusinessDetail />
+                  </AuthGate>
+                }
+              />
+              {/* Phase 4: events. /events/mine and /events/new sit before
+                  /events/:id so they aren't swallowed by the param route. */}
+              <Route
+                path="/events"
+                element={
+                  <AuthGate key="events" requireComplete>
+                    <Events />
+                  </AuthGate>
+                }
+              />
+              <Route
+                path="/events/mine"
+                element={
+                  <AuthGate key="my-events" requireComplete>
+                    <MyEvents />
+                  </AuthGate>
+                }
+              />
+              <Route
+                path="/events/new"
+                element={
+                  <AuthGate key="event-new" requireComplete>
+                    <EventNew />
+                  </AuthGate>
+                }
+              />
+              <Route
+                path="/events/:id"
+                element={
+                  <AuthGate key="event-detail" requireComplete>
+                    <EventDetail />
+                  </AuthGate>
+                }
+              />
+              <Route
+                path="/admin/events"
+                element={
+                  <AuthGate key="admin-events" requireComplete>
+                    <AdminEvents />
                   </AuthGate>
                 }
               />

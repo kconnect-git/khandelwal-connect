@@ -6,17 +6,19 @@ type SelectFieldProps = {
   onChange: (value: string) => void
   options: Option[]
   required?: boolean
+  disabled?: boolean
 }
 
-export function SelectField({ label, value, onChange, options, required }: SelectFieldProps) {
+export function SelectField({ label, value, onChange, options, required, disabled }: SelectFieldProps) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm text-[var(--color-text-muted)]">{label}</span>
       <select
         required={required}
+        disabled={disabled}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 outline-none focus:border-[var(--color-accent)]"
+        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 outline-none focus:border-[var(--color-accent)] disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {required && <option value="">Select…</option>}
         {options.map((option) => (

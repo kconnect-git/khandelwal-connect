@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { createOwnPerson, getOwnPerson } from '../lib/people'
+import { consumeReturnTo } from '../lib/returnTo'
 
 type LocationState = { email: string }
 
@@ -83,7 +84,10 @@ export function VerifyOtp() {
         await createOwnPerson(data.session.user.id, '')
       }
 
-      navigate('/onboarding', { replace: true })
+      // A stored deep link (AuthGate sets it when an anonymous visitor hits
+      // a protected path) wins over the default. If the profile turns out
+      // to be incomplete, that route's own AuthGate bounces to /onboarding.
+      navigate(consumeReturnTo() ?? '/onboarding', { replace: true })
     } catch (err) {
       console.error('[verify] unexpected verify error', err)
       setError(err instanceof Error ? err.message : 'Something went wrong verifying the code.')

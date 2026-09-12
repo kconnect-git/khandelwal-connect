@@ -6,7 +6,7 @@ This document captures all product, design, and technical decisions made during 
 
 ## 0. Current status (read this first)
 
-**Phases 0, 1, 2, 3a, 3b, and 3c are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, and **`phase-3c-summary.md`** before starting Phase 4. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
+**Phases 0, 1, 2, 3a, 3b, 3c, and 4 are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, **`phase-3c-summary.md`**, and **`phase-4-summary.md`** before starting Phase 5. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
 
 Phase 0 (backend foundation):
 - ✅ Supabase project created (region: Singapore), email auth + Resend SMTP, OTP email template edited to show the 6-digit code
@@ -52,7 +52,15 @@ Phase 3c (tabbed Profile page — migration `0017`):
 - ✅ Per-tab Save that validates/writes only that tab's columns
 - ❌ Not built: exposing any of the new person fields to other members. See `phase-3c-summary.md`.
 
-**Immediate next step:** read the five phase summaries (especially `phase-3b-summary.md` §4–6 and `phase-3c-summary.md` §4), then plan Phase 4 (events).
+Phase 4 (events — migration `0018`; **scope changed from "admin-created" to member-created + admin approval**):
+- ✅ Any member creates an event (`/events/new`); it's `pending` until an admin approves it. Visibility `members` or `invite_only`. `/events` (Upcoming · Registered · Past), `/events/mine` (created / invited / joined), `/events/:id` with Join / Leave (capacity + invite check enforced server-side under a row lock)
+- ✅ Invitees added only after approval; emailing them is a separate explicit action (`send-event-invite` Edge Function, `emailed_at` tracked, per-person or "all not yet emailed"). Only the description is editable after approval
+- ✅ `admins` table + `is_admin()` and a bare `/admin/events` approval queue (approve / reject with reason / cancel), audit-logged. **Phase 5 builds on this**
+- ✅ Access model: **RPC-only writes** (no table write policies) — a deliberate departure from businesses, see `phase-4-summary.md` §2
+- ✅ Deep-link return after login (`lib/returnTo.ts`), Events nav tab, dashboard Events tile
+- ❌ Not built: cover images, waitlists, reminders, inviting non-members. See `phase-4-summary.md`.
+
+**Immediate next step:** read the six phase summaries (especially `phase-4-summary.md` §2 and §4), then plan Phase 5 (admin console).
 
 ---
 
@@ -255,11 +263,12 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 - [x] Directory linking (WORK + BUSINESSES sections on member profiles, Occupation chip in the directory, Businesses tab + dashboard tile)
 - **Exit criteria (3b)**: members can see business listings — met. Full details in `phase-3b-summary.md`
 
-### Phase 4 — Events (Week 6)
-- Events list (Upcoming/Registered/Past)
-- RSVP flow with live counts
-- Event detail screen
-- **Exit criteria**: admin-created event shows up, members can RSVP
+### Phase 4 — Events (Week 6) — **done, scope widened from the original plan**
+- [x] Events list (Upcoming/Registered/Past)
+- [x] RSVP flow with live counts
+- [x] Event detail screen
+- [x] **Added during planning**: member-created events with admin approval, `members` / `invite_only` visibility, invitee list + explicit invite emails, minimal admin queue
+- **Exit criteria (revised)**: a member-created event is approved by an admin, shows up, members can RSVP — met. Full details in `phase-4-summary.md`
 
 ### Phase 5 — Admin console (Weeks 7–8, can run parallel to Phase 3–4)
 - Admin auth/role check (separate from member auth)
@@ -289,7 +298,9 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 ## 10. Open decisions still to make
 
 - ~~Exact RLS policy wording for `people` table visibility~~ — **decided in Phase 3a**: `people` stays self-only; cross-member reads go through `SECURITY DEFINER` RPCs with fixed column tiers (see `phase-3a-summary.md` §1–2)
-- ~~Access model for `businesses` in Phase 3b~~ — **decided in Phase 3b**: hybrid — real RLS for owner writes, `SECURITY DEFINER` RPCs for reads that join the owner (see `phase-3b-summary.md` §1/§4). Reuse for events.
+- ~~Access model for `businesses` in Phase 3b~~ — **decided in Phase 3b**: hybrid — real RLS for owner writes, `SECURITY DEFINER` RPCs for reads that join the owner (see `phase-3b-summary.md` §1/§4).
+- ~~Access model for events~~ — **decided in Phase 4**: RPC-only writes (no table write policies) because of the status lifecycle; see `phase-4-summary.md` §2. Matrimony should copy the events model, not the businesses one.
+- ~~Admin role check~~ — **decided in Phase 4**: `admins` table keyed by auth user id + `is_admin()`. Phase 5 extends this table rather than adding a role column on `people`.
 - Per-user "hide my number" toggle — planned follow-up to Phase 3a's decision to print mobile numbers on profiles
 - Whether dues/payments launch in v1 or a later phase
 - Self-hosting fonts vs. CDN (deferred until design is locked)

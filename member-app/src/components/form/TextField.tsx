@@ -1,6 +1,6 @@
 type TextFieldProps = {
   label?: string
-  type?: 'text' | 'date' | 'tel' | 'email'
+  type?: 'text' | 'date' | 'datetime-local' | 'tel' | 'email'
   value: string
   onChange: (value: string) => void
   required?: boolean
@@ -10,6 +10,7 @@ type TextFieldProps = {
   maxLength?: number
   /** Fixed, non-editable text shown before the input (e.g. a locked country code). */
   prefix?: string
+  disabled?: boolean
 }
 
 export function TextField({
@@ -23,11 +24,16 @@ export function TextField({
   max,
   maxLength,
   prefix,
+  disabled,
 }: TextFieldProps) {
   return (
     <label className="flex flex-col gap-1.5">
       {label && <span className="text-sm text-[var(--color-text-muted)]">{label}</span>}
-      <div className="flex items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus-within:border-[var(--color-accent)]">
+      <div
+        className={`flex items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus-within:border-[var(--color-accent)] ${
+          disabled ? 'opacity-60' : ''
+        }`}
+      >
         {prefix && (
           <span className="pl-3 py-2.5 text-[var(--color-text-muted)] select-none">{prefix}</span>
         )}
@@ -38,9 +44,10 @@ export function TextField({
           min={min}
           max={max}
           maxLength={maxLength}
+          disabled={disabled}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="flex-1 min-w-0 bg-transparent px-3 py-2.5 outline-none"
+          className="flex-1 min-w-0 bg-transparent px-3 py-2.5 outline-none disabled:cursor-not-allowed"
         />
       </div>
     </label>

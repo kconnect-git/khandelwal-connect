@@ -116,6 +116,88 @@ export type BusinessRow = {
   updated_at: string
 }
 
+// Phase 4 (0018). Nothing in the app writes these tables directly -- every
+// write is an RPC (see lib/events.ts) -- so the Row types exist for the
+// safety-net selects and for shape reference only.
+export type EventStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+export type EventVisibility = 'members' | 'invite_only'
+
+export type EventRow = {
+  id: string
+  creator_id: string
+  title: string
+  description: string | null
+  starts_at: string
+  ends_at: string | null
+  venue: string | null
+  city: string | null
+  state: string | null
+  capacity: number | null
+  visibility: EventVisibility
+  status: EventStatus
+  rejection_reason: string | null
+  approved_by: string | null
+  approved_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type RsvpRow = {
+  id: string
+  event_id: string
+  person_id: string
+  status: 'going' | 'not_going'
+  created_at: string
+  updated_at: string
+}
+
+export type EventInviteRow = {
+  id: string
+  event_id: string
+  person_id: string
+  invited_by: string
+  emailed_at: string | null
+  created_at: string
+}
+
+export type AdminRow = {
+  auth_user_id: string
+  created_at: string
+}
+
+/** The columns every event list RPC returns (cards). */
+export type EventCardRow = {
+  id: string
+  title: string
+  description: string | null
+  starts_at: string
+  ends_at: string | null
+  venue: string | null
+  city: string | null
+  state: string | null
+  capacity: number | null
+  visibility: EventVisibility
+  status: EventStatus
+  creator_id: string
+  creator_name: string
+  creator_photo_url: string | null
+  creator_member_code: string
+  going_count: number
+  my_rsvp_status: 'going' | 'not_going' | null
+}
+
+type EventWriteArgs = {
+  p_title: string
+  p_description?: string | null
+  p_starts_at?: string | null
+  p_ends_at?: string | null
+  p_venue?: string | null
+  p_city?: string | null
+  p_state?: string | null
+  p_capacity?: number | null
+  p_visibility?: string
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -141,6 +223,30 @@ export type Database = {
         Row: FamilyRelationRow
         Insert: Partial<FamilyRelationRow> & { person_id: string; slot: FamilyRelationSlot }
         Update: Partial<FamilyRelationRow>
+        Relationships: []
+      }
+      events: {
+        Row: EventRow
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      rsvps: {
+        Row: RsvpRow
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      event_invites: {
+        Row: EventInviteRow
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+      admins: {
+        Row: AdminRow
+        Insert: never
+        Update: never
         Relationships: []
       }
     }
@@ -348,6 +454,106 @@ export type Database = {
           kind: string
           value: string
         }[]
+      }
+      // Phase 4 (0018)
+      is_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      list_events: {
+        Args: {
+          p_mode?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: (EventCardRow & { total_count: number })[]
+      }
+      list_my_events: {
+        Args: Record<PropertyKey, never>
+        Returns: (EventCardRow & {
+          rejection_reason: string | null
+          relation: 'created' | 'invited' | 'joined'
+        })[]
+      }
+      get_event: {
+        Args: {
+          p_event_id: string
+        }
+        Returns: (EventCardRow & {
+          rejection_reason: string | null
+          approved_at: string | null
+          created_at: string
+          is_creator: boolean
+          is_invited: boolean
+          is_admin: boolean
+          can_edit_all: boolean
+          can_edit_description: boolean
+          can_manage_invitees: boolean
+        })[]
+      }
+      list_event_invitees: {
+        Args: {
+          p_event_id: string
+        }
+        Returns: {
+          person_id: string
+          full_name: string
+          profile_photo_url: string | null
+          member_code: string
+          emailed_at: string | null
+          created_at: string
+        }[]
+      }
+      admin_list_events: {
+        Args: {
+          p_status?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: (EventCardRow & { rejection_reason: string | null; total_count: number })[]
+      }
+      save_event: {
+        Args: EventWriteArgs
+        Returns: string
+      }
+      update_event: {
+        Args: EventWriteArgs & { p_event_id: string }
+        Returns: undefined
+      }
+      cancel_event: {
+        Args: {
+          p_event_id: string
+        }
+        Returns: undefined
+      }
+      rsvp_event: {
+        Args: {
+          p_event_id: string
+          p_status: string
+        }
+        Returns: number
+      }
+      add_event_invitee: {
+        Args: {
+          p_event_id: string
+          p_person_id: string
+        }
+        Returns: undefined
+      }
+      remove_event_invitee: {
+        Args: {
+          p_event_id: string
+          p_person_id: string
+        }
+        Returns: undefined
+      }
+      admin_set_event_status: {
+        Args: {
+          p_event_id: string
+          p_status: string
+          p_reason?: string | null
+        }
+        Returns: undefined
       }
     }
     Enums: Record<string, never>

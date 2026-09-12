@@ -5,7 +5,9 @@ import { getOwnPerson } from '../lib/people'
 import { getProfileCompletion, type ProfileCompletion } from '../lib/profileCompletion'
 import { listDirectory } from '../lib/directory'
 import { listBusinesses } from '../lib/businesses'
+import { listEvents } from '../lib/events'
 import { getFamilyNameCompletionFlags } from '../lib/familyDetails'
+import { clearReturnTo } from '../lib/returnTo'
 import type { Person } from '../types/database'
 
 export function Dashboard() {
@@ -14,6 +16,7 @@ export function Dashboard() {
   const [completion, setCompletion] = useState<ProfileCompletion | null>(null)
   const [memberCount, setMemberCount] = useState<number | null>(null)
   const [businessCount, setBusinessCount] = useState<number | null>(null)
+  const [eventCount, setEventCount] = useState<number | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
@@ -50,6 +53,11 @@ export function Dashboard() {
         if (!cancelled) setBusinessCount(page.length > 0 ? page[0].total_count : 0)
       })
       .catch((err) => console.error('[Dashboard] failed to load business count', err))
+    listEvents({ mode: 'upcoming', limit: 1 })
+      .then((page) => {
+        if (!cancelled) setEventCount(page.length > 0 ? page[0].total_count : 0)
+      })
+      .catch((err) => console.error('[Dashboard] failed to load event count', err))
 
     return () => {
       cancelled = true
@@ -58,6 +66,7 @@ export function Dashboard() {
 
   async function handleLogout() {
     setLoggingOut(true)
+    clearReturnTo()
     await supabase.auth.signOut()
     navigate('/signup', { replace: true })
   }
@@ -89,8 +98,8 @@ export function Dashboard() {
         </div>
       )}
 
-      {(memberCount !== null || businessCount !== null) && (
-        <div className="w-full grid grid-cols-2 gap-3">
+      {(memberCount !== null || businessCount !== null || eventCount !== null) && (
+        <div className="w-full grid grid-cols-3 gap-3">
           {memberCount !== null && (
             <Link
               to="/directory"
@@ -107,6 +116,15 @@ export function Dashboard() {
             >
               <span className="font-heading text-3xl font-bold leading-tight">{businessCount}</span>
               <span className="block text-sm text-[var(--color-text-muted)]">Businesses</span>
+            </Link>
+          )}
+          {eventCount !== null && (
+            <Link
+              to="/events"
+              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
+            >
+              <span className="font-heading text-3xl font-bold leading-tight">{eventCount}</span>
+              <span className="block text-sm text-[var(--color-text-muted)]">Events</span>
             </Link>
           )}
         </div>
