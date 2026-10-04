@@ -89,12 +89,32 @@ create table people (
   pincode text
     check (pincode is null or pincode ~ '^\d{6}$'),
   date_of_marriage date,
+  -- Phase 5a (0019): the admin approval gate. member_status -- not
+  -- member_code -- is what every cross-member RPC and policy now tests.
+  -- 'onboarding' = wizard not finished; submit_for_review() moves it to
+  -- 'pending'. A member code is still issued at wizard completion, so a
+  -- pending member has an ID but no access. admin_message carries either the
+  -- "more info needed" text or the rejection reason (which one is implied by
+  -- the status). reviewed_by is null on rows grandfathered by the 0019
+  -- backfill. These six columns are write-protected from the client by the
+  -- people_protect_review_columns trigger below -- hide_mobile deliberately
+  -- is not, since members set it themselves.
+  member_status text not null default 'onboarding'
+    check (member_status in ('onboarding', 'pending', 'info_requested', 'approved', 'rejected')),
+  admin_message text,
+  submitted_at timestamptz,
+  reviewed_by uuid references auth.users(id),
+  reviewed_at timestamptz,
+  hide_mobile boolean not null default false,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   constraint people_auth_user_id_key unique (auth_user_id)
 );
 
 create index people_state_code_idx on people (state_code);
+
+-- (0019) The admin queue orders by submitted_at within a status.
+create index people_member_status_idx on people (member_status, submitted_at);
 
 -- (0017) full_name := "First Middle Last" whenever a name part is written.
 create or replace function people_sync_full_name()
@@ -115,6 +135,33 @@ $$;
 create trigger people_sync_full_name
   before insert or update of first_name, middle_name, last_name on people
   for each row execute function people_sync_full_name();
+
+-- (0019) `own row update` (enable_rls.sql) lets a member write any column of
+-- their own row, which would let them approve themselves -- or, since Phase
+-- 1, hand-pick their own member_code. PostgREST runs as `authenticated`;
+-- every SECURITY DEFINER RPC runs as the function owner, so this blocks the
+-- client path only and leaves submit_for_review / admin_set_member_status
+-- free to write these columns.
+create or replace function people_protect_review_columns()
+returns trigger
+language plpgsql
+as $$
+begin
+  if current_user = 'authenticated'
+     and (new.member_status, new.admin_message, new.submitted_at,
+          new.reviewed_by, new.reviewed_at, new.member_code)
+         is distinct from
+         (old.member_status, old.admin_message, old.submitted_at,
+          old.reviewed_by, old.reviewed_at, old.member_code) then
+    raise exception 'These fields can only be changed through the review process';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger people_protect_review_columns
+  before update on people
+  for each row execute function people_protect_review_columns();
 
 -- Children are multi-valued, so they get their own table rather than more
 -- columns on `people`. Same name + member_code + resolved-id pattern as the
@@ -193,7 +240,11 @@ create policy "own family relations delete" on family_relations for delete
 -- for collisions despite RLS restricting normal reads to a caller's own
 -- row -- it only ever writes to the caller's own row (found via auth.uid()).
 -- Idempotent: returns the existing code if one is already assigned.
-create or replace function assign_member_code()
+-- (0019) Split in two: the collision walk now takes a person id so that
+-- admin_set_member_status can issue a code for somebody else on approval
+-- (a safety net -- in practice the code is already there from the wizard).
+-- assign_member_code() below is the unchanged caller-facing wrapper.
+create or replace function assign_member_code_for(p_person_id uuid)
 returns text
 language plpgsql
 security definer
@@ -211,7 +262,7 @@ begin
   select id, mobile_number, state_code, member_code
     into v_person_id, v_mobile, v_state_code, v_existing_code
   from people
-  where auth_user_id = auth.uid();
+  where id = p_person_id;
 
   if v_person_id is null then
     raise exception 'No person row for the current user';
@@ -253,12 +304,90 @@ begin
 end;
 $$;
 
+-- Not granted to authenticated: reachable only through the wrapper below and
+-- through submit_for_review / admin_set_member_status.
+revoke all on function assign_member_code_for(uuid) from public;
+
+create or replace function assign_member_code()
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_person_id uuid;
+begin
+  select id into v_person_id from people where auth_user_id = auth.uid();
+  if v_person_id is null then
+    raise exception 'No person row for the current user';
+  end if;
+  return assign_member_code_for(v_person_id);
+end;
+$$;
+
 revoke all on function assign_member_code() from public;
 grant execute on function assign_member_code() to authenticated;
 
+-- (0019) The member's side of the approval gate, and the only way a row
+-- leaves 'onboarding' or 'info_requested'. Three callers: the wizard's
+-- Finish (via complete_onboarding_step3), the lazy backfill in
+-- useProfileStatus, and the "Resubmit for review" button on /pending.
+-- Idempotent for an already-approved member so the lazy path is safe to
+-- call on every load.
+--
+-- The field check mirrors isWizardComplete() in lib/profileCompletion.ts --
+-- the 12 requiredForWizard fields. last_name is deliberately excluded there
+-- (0017 backfilled name parts by splitting full_name, so single-word names
+-- would otherwise be stuck), so it is excluded here too.
+create or replace function submit_for_review()
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_person people%rowtype;
+  v_code text;
+begin
+  select * into v_person from people where auth_user_id = auth.uid() for update;
+  if not found then
+    raise exception 'No person row for the current user';
+  end if;
+
+  if v_person.member_status = 'approved' then
+    return v_person.member_code;
+  end if;
+  if v_person.member_status = 'rejected' then
+    raise exception 'This application was declined. Please contact the mandal.';
+  end if;
+
+  if v_person.first_name is null or v_person.gender is null or v_person.dob is null
+     or v_person.mobile_number is null or v_person.home_address is null
+     or v_person.current_city is null or v_person.current_district is null
+     or v_person.current_state is null or v_person.native_place is null
+     or v_person.gotra is null or v_person.marital_status is null
+     or v_person.education is null then
+    raise exception 'Complete your profile before submitting it for review';
+  end if;
+
+  v_code := assign_member_code_for(v_person.id);
+
+  update people
+  set member_status = 'pending', submitted_at = now(), updated_at = now()
+  where id = v_person.id;
+
+  return v_code;
+end;
+$$;
+
+revoke all on function submit_for_review() from public;
+grant execute on function submit_for_review() to authenticated;
+
 -- Called once, when the onboarding wizard's step 3 "Finish" is clicked:
 -- saves the step-3 fields and generates the member code in the same
--- database round trip.
+-- database round trip. (0019) It now also submits the profile for review, so
+-- the member lands on /pending rather than the dashboard. Signature and
+-- return value are unchanged -- the wizard still gets the member code back.
 create or replace function complete_onboarding_step3(
   p_gotra text,
   p_marital_status text,
@@ -284,7 +413,7 @@ begin
   set gotra = p_gotra, marital_status = p_marital_status, education = p_education
   where id = v_person_id;
 
-  return assign_member_code();
+  return submit_for_review();
 end;
 $$;
 
@@ -403,9 +532,14 @@ create table event_invites (
 
 create index event_invites_person_id_idx on event_invites (person_id);
 
--- (0018) Admin role. No policies -- only is_admin() reads it. Seeded by hand.
+-- (0018) Admin role. No policies -- only is_admin() / admin_role() read it.
+-- Seeded by hand. (0019) `role`: moderators run the member and event queues;
+-- super_admin additionally may revoke an already-approved member, and owns
+-- admin management when Phase 5b builds it.
 create table admins (
   auth_user_id uuid primary key references auth.users(id) on delete cascade,
+  role text not null default 'moderator'
+    check (role in ('super_admin', 'moderator')),
   created_at timestamptz default now()
 );
 
@@ -449,6 +583,66 @@ create table admin_audit_log (
   created_at timestamptz default now()
 );
 
+-- ================================================================
+-- membership / admin gate helpers
+-- ================================================================
+-- Both are defined here, ahead of every RPC that calls them: SQL-language
+-- function bodies are parsed at creation time, so a forward reference would
+-- fail on a fresh run of this file. (is_admin() arrived in 0018 further
+-- down; 0019 moved it up here when get_member_profile started calling it.)
+
+-- admins has no policies at all: these definer functions are its only readers.
+create or replace function is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from admins where auth_user_id = auth.uid());
+$$;
+
+revoke all on function is_admin() from public;
+grant execute on function is_admin() to authenticated;
+
+-- (0019) Null for a non-admin, so it doubles as "am I an admin, and which
+-- kind". is_admin() is deliberately left alone -- it is used inside RLS and
+-- a dozen RPCs, and every role gets those.
+create or replace function admin_role()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select role from admins where auth_user_id = auth.uid();
+$$;
+
+revoke all on function admin_role() from public;
+grant execute on function admin_role() to authenticated;
+
+-- (0019) The caller-side membership gate. Before 0019 every RPC below
+-- open-coded `member_code is not null`; the hard approval gate made that
+-- wrong in two ways -- a pending member now holds a code, and eight of these
+-- read RPCs never checked the *caller* at all, only the rows returned. Row
+-- predicates stay inline as `p.member_status = 'approved'`; this helper is
+-- for the plain boolean caller checks, including the two RLS policies.
+create or replace function is_approved_member()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from people
+    where auth_user_id = auth.uid() and member_status = 'approved'
+  );
+$$;
+
+revoke all on function is_approved_member() from public;
+grant execute on function is_approved_member() to authenticated;
+
 -- Phase 2: family details RPCs (see migrations 0006/0007 for how these were
 -- introduced).
 
@@ -480,9 +674,11 @@ stable
 security definer
 set search_path = public
 as $$
-  select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_state, p.member_code, p.mobile_number
+  select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_state, p.member_code,
+         case when p.hide_mobile then null else p.mobile_number end
   from people p
-  where p.member_code is not null
+  where is_approved_member()
+    and p.member_status = 'approved'
     and length(trim(p_full_name)) >= 3
     and p.full_name ilike '%' || p_full_name || '%'
     and (p_gotra is null or p.gotra ilike p_gotra)
@@ -587,7 +783,7 @@ begin
   end if;
 
   if p_member_code is not null and length(trim(p_member_code)) > 0 then
-    select id into v_matched_id from people where member_code = p_member_code;
+    select id into v_matched_id from people where member_code = p_member_code and member_status = 'approved';
     if v_matched_id is null then
       raise exception 'No registered member found with code %', p_member_code;
     end if;
@@ -648,7 +844,7 @@ begin
   end if;
 
   if p_member_code is not null and length(trim(p_member_code)) > 0 then
-    select id into v_matched_id from people where member_code = p_member_code;
+    select id into v_matched_id from people where member_code = p_member_code and member_status = 'approved';
     if v_matched_id is null then
       raise exception 'No registered member found with code %', p_member_code;
     end if;
@@ -698,7 +894,7 @@ begin
   end if;
 
   if p_member_code is not null and length(trim(p_member_code)) > 0 then
-    select id into v_matched_id from people where member_code = p_member_code;
+    select id into v_matched_id from people where member_code = p_member_code and member_status = 'approved';
     if v_matched_id is null then
       raise exception 'No registered member found with code %', p_member_code;
     end if;
@@ -786,7 +982,8 @@ as $$
          p.occupation_type, p.job_title, p.company_name,
          count(*) over () as total_count
   from people p
-  where p.member_code is not null
+  where is_approved_member()
+    and p.member_status = 'approved'
     and (p_search is null or length(trim(p_search)) = 0
          or p.full_name ilike '%' || p_search || '%')
     and (p_state is null or p.current_state ilike p_state)
@@ -827,11 +1024,13 @@ set search_path = public
 as $$
   select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_district,
          p.current_state, p.member_code, p.education, p.marital_status,
-         p.mobile_number, p.profile_photo_url,
+         case when p.hide_mobile and not is_admin() then null else p.mobile_number end,
+         p.profile_photo_url,
          p.occupation_type, p.job_title, p.company_name, p.job_location
   from people p
   where p.id = p_person_id
-    and p.member_code is not null;
+    and (is_approved_member() or is_admin())
+    and (p.member_status = 'approved' or is_admin());
 $$;
 
 revoke all on function get_member_profile(uuid) from public;
@@ -849,17 +1048,18 @@ as $$
   select f.kind, f.value
   from (
     select 'state' as kind, p.current_state as value
-    from people p where p.member_code is not null and p.current_state is not null
+    from people p where p.member_status = 'approved' and p.current_state is not null
     union
     select 'city', p.current_city
-    from people p where p.member_code is not null and p.current_city is not null
+    from people p where p.member_status = 'approved' and p.current_city is not null
     union
     select 'gotra', p.gotra
-    from people p where p.member_code is not null and p.gotra is not null
+    from people p where p.member_status = 'approved' and p.gotra is not null
     union
     select 'occupation', p.occupation_type
-    from people p where p.member_code is not null and p.occupation_type is not null
+    from people p where p.member_status = 'approved' and p.occupation_type is not null
   ) f
+  where is_approved_member()
   order by f.kind, f.value;
 $$;
 
@@ -909,7 +1109,8 @@ as $$
          count(*) over () as total_count
   from businesses b
   join people p on p.id = b.owner_id
-  where p.member_code is not null
+  where is_approved_member()
+    and p.member_status = 'approved'
     and (p_search is null or length(trim(p_search)) = 0
          or b.name ilike '%' || p_search || '%'
          or p.full_name ilike '%' || p_search || '%')
@@ -966,7 +1167,8 @@ as $$
   from businesses b
   join people p on p.id = b.owner_id
   where b.id = p_business_id
-    and p.member_code is not null;
+    and is_approved_member()
+    and p.member_status = 'approved';
 $$;
 
 revoke all on function get_business(uuid) from public;
@@ -990,7 +1192,8 @@ as $$
   from businesses b
   join people p on p.id = b.owner_id
   where b.owner_id = p_person_id
-    and p.member_code is not null
+    and is_approved_member()
+    and p.member_status = 'approved'
   order by b.name asc, b.id asc;
 $$;
 
@@ -1010,16 +1213,17 @@ as $$
   from (
     select 'category' as kind, b.category as value
     from businesses b join people p on p.id = b.owner_id
-    where p.member_code is not null and b.category is not null
+    where p.member_status = 'approved' and b.category is not null
     union
     select 'city', b.city
     from businesses b join people p on p.id = b.owner_id
-    where p.member_code is not null and b.city is not null
+    where p.member_status = 'approved' and b.city is not null
     union
     select 'state', b.state
     from businesses b join people p on p.id = b.owner_id
-    where p.member_code is not null and b.state is not null
+    where p.member_status = 'approved' and b.state is not null
   ) f
+  where is_approved_member()
   order by f.kind, f.value;
 $$;
 
@@ -1032,19 +1236,9 @@ grant execute on function business_filter_options() to authenticated;
 -- Every write to events / rsvps / event_invites is one of these; the
 -- select-only safety-net policies live in enable_rls.sql.
 
--- admins has no policies at all: this definer function is the only reader.
-create or replace function is_admin()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (select 1 from admins where auth_user_id = auth.uid());
-$$;
-
-revoke all on function is_admin() from public;
-grant execute on function is_admin() to authenticated;
+-- is_admin() used to be defined here (0018). 0019 moved it up next to
+-- admin_role() / is_approved_member(), above the directory RPCs that now
+-- call it -- see "membership / admin gate helpers".
 
 -- ================================================================
 -- read RPCs
@@ -1089,7 +1283,7 @@ security definer
 set search_path = public
 as $$
   with me as (
-    select id from people where auth_user_id = auth.uid() and member_code is not null
+    select id from people where auth_user_id = auth.uid() and member_status = 'approved'
   )
   select e.id, e.title, e.description, e.starts_at, e.ends_at,
          e.venue, e.city, e.state, e.capacity, e.visibility, e.status,
@@ -1157,7 +1351,7 @@ security definer
 set search_path = public
 as $$
   with me as (
-    select id from people where auth_user_id = auth.uid() and member_code is not null
+    select id from people where auth_user_id = auth.uid() and member_status = 'approved'
   ),
   mine as (
     select e.id as event_id, 'created' as relation, 1 as prio
@@ -1239,7 +1433,7 @@ security definer
 set search_path = public
 as $$
   with ctx as (
-    select (select id from people where auth_user_id = auth.uid() and member_code is not null) as me_id,
+    select (select id from people where auth_user_id = auth.uid() and member_status = 'approved') as me_id,
            is_admin() as admin
   )
   select e.id, e.title, e.description, e.starts_at, e.ends_at,
@@ -1289,7 +1483,7 @@ security definer
 set search_path = public
 as $$
   with me as (
-    select id from people where auth_user_id = auth.uid() and member_code is not null
+    select id from people where auth_user_id = auth.uid() and member_status = 'approved'
   )
   select i.person_id, p.full_name, p.profile_photo_url, p.member_code, i.emailed_at, i.created_at
   from event_invites i
@@ -1337,7 +1531,7 @@ security definer
 set search_path = public
 as $$
   with me as (
-    select id from people where auth_user_id = auth.uid() and member_code is not null
+    select id from people where auth_user_id = auth.uid() and member_status = 'approved'
   )
   select e.id, e.title, e.description, e.starts_at, e.ends_at,
          e.venue, e.city, e.state, e.capacity, e.visibility, e.status,
@@ -1419,7 +1613,7 @@ declare
   v_self_id uuid;
   v_new_id uuid;
 begin
-  select id into v_self_id from people where auth_user_id = auth.uid() and member_code is not null;
+  select id into v_self_id from people where auth_user_id = auth.uid() and member_status = 'approved';
   if v_self_id is null then
     raise exception 'Complete your profile before creating an event';
   end if;
@@ -1470,7 +1664,7 @@ declare
   v_self_id uuid;
   v_event events%rowtype;
 begin
-  select id into v_self_id from people where auth_user_id = auth.uid() and member_code is not null;
+  select id into v_self_id from people where auth_user_id = auth.uid() and member_status = 'approved';
   if v_self_id is null then
     raise exception 'No person row for the current user';
   end if;
@@ -1528,7 +1722,7 @@ declare
   v_self_id uuid;
   v_event events%rowtype;
 begin
-  select id into v_self_id from people where auth_user_id = auth.uid() and member_code is not null;
+  select id into v_self_id from people where auth_user_id = auth.uid() and member_status = 'approved';
   if v_self_id is null then
     raise exception 'No person row for the current user';
   end if;
@@ -1566,7 +1760,7 @@ begin
     raise exception 'Invalid RSVP status: %', p_status;
   end if;
 
-  select id into v_self_id from people where auth_user_id = auth.uid() and member_code is not null;
+  select id into v_self_id from people where auth_user_id = auth.uid() and member_status = 'approved';
   if v_self_id is null then
     raise exception 'Complete your profile before joining an event';
   end if;
@@ -1626,7 +1820,7 @@ declare
   v_self_id uuid;
   v_event events%rowtype;
 begin
-  select id into v_self_id from people where auth_user_id = auth.uid() and member_code is not null;
+  select id into v_self_id from people where auth_user_id = auth.uid() and member_status = 'approved';
   if v_self_id is null then
     raise exception 'No person row for the current user';
   end if;
@@ -1641,7 +1835,7 @@ begin
   if p_person_id = v_self_id then
     raise exception 'You are the organiser -- no need to invite yourself';
   end if;
-  if not exists (select 1 from people where id = p_person_id and member_code is not null) then
+  if not exists (select 1 from people where id = p_person_id and member_status = 'approved') then
     raise exception 'No registered member found';
   end if;
 
@@ -1666,7 +1860,7 @@ declare
   v_self_id uuid;
   v_event events%rowtype;
 begin
-  select id into v_self_id from people where auth_user_id = auth.uid() and member_code is not null;
+  select id into v_self_id from people where auth_user_id = auth.uid() and member_status = 'approved';
   if v_self_id is null then
     raise exception 'No person row for the current user';
   end if;
@@ -1753,3 +1947,155 @@ $$;
 revoke all on function admin_set_event_status(uuid, text, text) from public;
 grant execute on function admin_set_event_status(uuid, text, text) to authenticated;
 
+
+-- ================================================================
+-- Phase 5a (0019): member approval RPCs
+-- ================================================================
+
+-- The admin queue. auth.users is joined for the login email -- `people` has
+-- no primary email column (only secondary_email), the same reason
+-- send-event-invite has to go through auth.admin.getUserById. Safe here
+-- because the function is definer-owned and gated on is_admin().
+--
+-- Ordering: the two queues a human works through (pending, info_requested)
+-- come oldest-first so nobody waits forever; the archive tabs come
+-- most-recently-reviewed first.
+create or replace function admin_list_members(
+  p_status text default 'pending',
+  p_search text default null,
+  p_limit int default 20,
+  p_offset int default 0
+)
+returns table (
+  id uuid,
+  full_name text,
+  profile_photo_url text,
+  member_code text,
+  email text,
+  mobile_number text,
+  gotra text,
+  native_place text,
+  current_city text,
+  current_state text,
+  member_status text,
+  admin_message text,
+  submitted_at timestamptz,
+  reviewed_at timestamptz,
+  created_at timestamptz,
+  total_count bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.id, p.full_name, p.profile_photo_url, p.member_code,
+         u.email::text, p.mobile_number,
+         p.gotra, p.native_place, p.current_city, p.current_state,
+         p.member_status, p.admin_message,
+         p.submitted_at, p.reviewed_at, p.created_at,
+         count(*) over () as total_count
+  from people p
+  left join auth.users u on u.id = p.auth_user_id
+  where is_admin()
+    and p.member_status = p_status
+    and (p_search is null or length(trim(p_search)) = 0
+         or p.full_name ilike '%' || p_search || '%'
+         or p.member_code ilike '%' || p_search || '%'
+         or p.mobile_number like '%' || p_search || '%')
+  order by case when p_status in ('pending', 'info_requested') then p.submitted_at end asc,
+           p.reviewed_at desc nulls last, p.full_name asc, p.id asc
+  limit least(greatest(coalesce(p_limit, 20), 1), 50)
+  offset greatest(coalesce(p_offset, 0), 0);
+$$;
+
+revoke all on function admin_list_members(text, text, int, int) from public;
+grant execute on function admin_list_members(text, text, int, int) to authenticated;
+
+-- Moderation, shaped like admin_set_event_status above. The state machine:
+--
+--   pending / info_requested -> approved | info_requested | rejected
+--   rejected                 -> approved | info_requested   (admin reopens;
+--                               the member cannot resubmit themselves)
+--   approved                 -> rejected                    (revocation,
+--                               super_admin only)
+--
+-- 'onboarding' rows are not reviewable -- that person hasn't submitted yet.
+-- Approving clears admin_message and issues a member code if one is somehow
+-- missing; rejecting or asking for more information requires a message,
+-- which is what the member sees on /pending.
+create or replace function admin_set_member_status(
+  p_person_id uuid,
+  p_status text,
+  p_message text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_person people%rowtype;
+  v_admin_person_id uuid;
+begin
+  if not is_admin() then
+    raise exception 'Not an admin';
+  end if;
+  if p_status not in ('approved', 'info_requested', 'rejected') then
+    raise exception 'Invalid status: %', p_status;
+  end if;
+
+  select * into v_person from people where id = p_person_id for update;
+  if not found then
+    raise exception 'Member not found';
+  end if;
+  if v_person.member_status = 'onboarding' then
+    raise exception 'This person has not finished onboarding yet';
+  end if;
+  if v_person.member_status = p_status then
+    raise exception 'This member is already %', p_status;
+  end if;
+
+  if p_status = 'approved' then
+    perform assign_member_code_for(p_person_id);
+    update people
+    set member_status = 'approved', admin_message = null,
+        reviewed_by = auth.uid(), reviewed_at = now(), updated_at = now()
+    where id = p_person_id;
+
+  elsif p_status = 'info_requested' then
+    if v_person.member_status = 'approved' then
+      raise exception 'An approved member cannot be sent back for more information';
+    end if;
+    if p_message is null or length(trim(p_message)) = 0 then
+      raise exception 'Please say what information is needed';
+    end if;
+    update people
+    set member_status = 'info_requested', admin_message = trim(p_message),
+        reviewed_by = auth.uid(), reviewed_at = now(), updated_at = now()
+    where id = p_person_id;
+
+  else
+    if v_person.member_status = 'approved' and coalesce(admin_role(), '') <> 'super_admin' then
+      raise exception 'Only a super admin can revoke an approved membership';
+    end if;
+    if p_message is null or length(trim(p_message)) = 0 then
+      raise exception 'Please give a reason for rejecting';
+    end if;
+    update people
+    set member_status = 'rejected', admin_message = trim(p_message),
+        reviewed_by = auth.uid(), reviewed_at = now(), updated_at = now()
+    where id = p_person_id;
+  end if;
+
+  -- admin_audit_log.admin_id -> people(id) and is nullable: an admin with no
+  -- people row of their own logs as null rather than failing the review.
+  select id into v_admin_person_id from people where auth_user_id = auth.uid();
+  insert into admin_audit_log (admin_id, action, target_type, target_id, notes)
+  values (v_admin_person_id, 'member_' || p_status, 'person', p_person_id,
+          nullif(trim(p_message), ''));
+end;
+$$;
+
+revoke all on function admin_set_member_status(uuid, text, text) from public;
+grant execute on function admin_set_member_status(uuid, text, text) to authenticated;

@@ -129,7 +129,10 @@ export function ProfileWizard() {
 
   if (status === 'loading') return null
   if (status === 'anonymous') return <Navigate to="/signup" replace />
-  if (status === 'done') return <Navigate to="/dashboard" replace />
+  // (0019) Not straight to /dashboard any more: a finished wizard now
+  // means "submitted for review", and RootRedirect is the one place that
+  // decides between /pending and /dashboard.
+  if (status === 'done') return <Navigate to="/" replace />
   if (status === 'error') {
     return (
       <ProfileLoadError
@@ -173,7 +176,9 @@ export function ProfileWizard() {
         console.log('[ProfileWizard] onboarding complete, member code', memberCode)
 
         triggerRefresh()
-        navigate('/dashboard', { replace: true })
+        // complete_onboarding_step3 also submits the profile for review
+        // (0019), so this lands on /pending via RootRedirect.
+        navigate('/', { replace: true })
         return
       }
 

@@ -1,6 +1,6 @@
 import { supabase } from '../utils/supabase'
 import { STATE_CODE_BY_NAME } from './formOptions'
-import type { Person } from '../types/database'
+import type { MemberStatus, Person } from '../types/database'
 
 export type PersonFormValues = {
   // Name parts (0017). full_name is derived from these -- see
@@ -173,4 +173,34 @@ export async function saveOwnPerson(
   const created = await createOwnPerson(authUserId, fullName)
   if (Object.keys(rest).length === 0) return created
   return updateOwnPerson(created.id, rest)
+}
+
+// ================================================================
+// Phase 5a: the approval gate (0019)
+// ================================================================
+
+// Re-submit after an admin asked for more information (or after a rejection
+// an admin has reopened). Also the RPC the wizard and useProfileStatus use
+// for the first submission -- it assigns the member code on the way through
+// and is idempotent for an already-approved member.
+export async function submitForReview(): Promise<string> {
+  const { data, error } = await supabase.rpc('submit_for_review')
+  if (error) throw error
+  return data as string
+}
+
+// "Hide my number" (Profile > Contact). A plain self-row update rather than
+// an RPC: there's no lifecycle here, and the column is deliberately outside
+// the set the people_protect_review_columns trigger locks down.
+export async function setHideMobile(personId: string, hide: boolean): Promise<void> {
+  const { error } = await supabase.from('people').update({ hide_mobile: hide }).eq('id', personId)
+  if (error) throw error
+}
+
+export const MEMBER_STATUS_LABELS: Record<MemberStatus, string> = {
+  onboarding: 'Not submitted',
+  pending: 'Awaiting review',
+  info_requested: 'More information needed',
+  approved: 'Approved',
+  rejected: 'Not approved',
 }

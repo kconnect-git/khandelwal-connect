@@ -5,6 +5,7 @@ import {
   formValuesToPatch,
   getOwnPerson,
   personToFormValues,
+  setHideMobile,
   updateOwnPerson,
   type PersonFormValues,
 } from '../lib/people'
@@ -63,6 +64,7 @@ export function Profile() {
   const [saveStates, setSaveStates] = useState<SaveStates>({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loadAttempt, setLoadAttempt] = useState(0)
+  const [hideMobileBusy, setHideMobileBusy] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -185,13 +187,32 @@ export function Profile() {
     <div className="flex-1 flex flex-col items-start gap-6 px-5 py-10 max-w-2xl mx-auto w-full">
       <div className="w-full flex items-center justify-between">
         <h1 className="font-heading text-2xl font-semibold">Profile</h1>
+        {/* (0019) A member awaiting review can reach this page but has no
+            dashboard to go back to. */}
         <Link
-          to="/dashboard"
+          to={person.member_status === 'approved' ? '/dashboard' : '/pending'}
           className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
         >
-          Back to dashboard
+          {person.member_status === 'approved' ? 'Back to dashboard' : 'Back'}
         </Link>
       </div>
+
+      {person.member_status === 'info_requested' && (
+        <div className="w-full rounded-xl border border-[var(--color-accent)] bg-[var(--color-surface)] p-4">
+          <p className="text-sm font-medium">An admin asked for more information</p>
+          {person.admin_message && (
+            <p className="mt-1.5 text-sm whitespace-pre-line text-[var(--color-text-muted)]">
+              {person.admin_message}
+            </p>
+          )}
+          <Link
+            to="/pending"
+            className="mt-2 inline-block text-sm text-[var(--color-accent)] hover:underline"
+          >
+            Resubmit once you've updated it →
+          </Link>
+        </div>
+      )}
 
       <ProfilePhotoControl
         person={person}
@@ -223,7 +244,32 @@ export function Profile() {
           loadAttempt={loadAttempt}
         />
       )}
-      {tab === 'contact' && <ContactTab {...personTabProps('contact')} primaryEmail={primaryEmail} />}
+      {tab === 'contact' && (
+        <ContactTab
+          {...personTabProps('contact')}
+          primaryEmail={primaryEmail}
+          hideMobile={person.hide_mobile}
+          hideMobileBusy={hideMobileBusy}
+          onHideMobileChange={async (hide) => {
+            // Optimistic: the checkbox should move the moment it's clicked.
+            // On failure we put it back and surface the reason.
+            const previous = person.hide_mobile
+            setPerson({ ...person, hide_mobile: hide })
+            setHideMobileBusy(true)
+            try {
+              await setHideMobile(person.id, hide)
+            } catch (err) {
+              console.error('[Profile] failed to save hide_mobile', err)
+              setPerson({ ...person, hide_mobile: previous })
+              setLoadError(
+                err instanceof Error ? err.message : 'Could not save that setting.',
+              )
+            } finally {
+              setHideMobileBusy(false)
+            }
+          }}
+        />
+      )}
       {tab === 'cultural' && <CulturalTab {...personTabProps('cultural')} />}
       {tab === 'residence' && <ResidenceTab {...personTabProps('residence')} />}
       {tab === 'business' && (

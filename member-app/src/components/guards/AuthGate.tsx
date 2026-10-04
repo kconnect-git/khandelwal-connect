@@ -7,9 +7,13 @@ import { ProfileLoadError } from './ProfileLoadError'
 type AuthGateProps = {
   children: ReactNode
   requireComplete?: boolean
+  // (0019) Let a member who is waiting on (or has been knocked back by) admin
+  // review through anyway. Only /pending and /profile set this -- /profile
+  // because acting on a "more information needed" note means editing it.
+  allowPending?: boolean
 }
 
-export function AuthGate({ children, requireComplete = false }: AuthGateProps) {
+export function AuthGate({ children, requireComplete = false, allowPending = false }: AuthGateProps) {
   const status = useProfileStatus()
   const location = useLocation()
 
@@ -25,6 +29,9 @@ export function AuthGate({ children, requireComplete = false }: AuthGateProps) {
   }
   if (status.state === 'incomplete' && requireComplete) {
     return <Navigate to="/onboarding" replace />
+  }
+  if (status.state === 'awaiting_approval' && requireComplete && !allowPending) {
+    return <Navigate to="/pending" replace />
   }
 
   return <>{children}</>

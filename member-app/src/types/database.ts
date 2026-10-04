@@ -44,8 +44,44 @@ export type Person = {
   address_line3: string | null
   pincode: string | null
   date_of_marriage: string | null
+  // (0019) The approval gate. member_status -- not member_code -- decides
+  // whether this person can see anything beyond their own profile.
+  // admin_message holds either the "more info needed" text or the rejection
+  // reason; which one is implied by member_status. The five review columns
+  // are read-only from the client (people_protect_review_columns trigger);
+  // hide_mobile is the one the member sets themselves.
+  member_status: MemberStatus
+  admin_message: string | null
+  submitted_at: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  hide_mobile: boolean
   created_at: string
   updated_at: string
+}
+
+export type MemberStatus = 'onboarding' | 'pending' | 'info_requested' | 'approved' | 'rejected'
+
+export type AdminRoleName = 'super_admin' | 'moderator'
+
+/** One row of the Phase 5a admin member queue (admin_list_members). */
+export type AdminMemberRow = {
+  id: string
+  full_name: string
+  profile_photo_url: string | null
+  member_code: string | null
+  email: string | null
+  mobile_number: string | null
+  gotra: string | null
+  native_place: string | null
+  current_city: string | null
+  current_state: string | null
+  member_status: MemberStatus
+  admin_message: string | null
+  submitted_at: string | null
+  reviewed_at: string | null
+  created_at: string
+  total_count: number
 }
 
 export type ChildRow = {
@@ -162,6 +198,9 @@ export type EventInviteRow = {
 
 export type AdminRow = {
   auth_user_id: string
+  // (0019) moderator runs the queues; super_admin may also revoke an
+  // already-approved member.
+  role: AdminRoleName
   created_at: string
 }
 
@@ -255,6 +294,36 @@ export type Database = {
       assign_member_code: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      // (0019) member approval gate
+      submit_for_review: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      is_approved_member: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      admin_role: {
+        Args: Record<PropertyKey, never>
+        Returns: AdminRoleName | null
+      }
+      admin_list_members: {
+        Args: {
+          p_status?: string
+          p_search?: string | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: AdminMemberRow[]
+      }
+      admin_set_member_status: {
+        Args: {
+          p_person_id: string
+          p_status: string
+          p_message?: string | null
+        }
+        Returns: void
       }
       complete_onboarding_step3: {
         Args: {

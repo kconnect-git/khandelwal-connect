@@ -22,7 +22,8 @@ import { Events } from './routes/Events'
 import { MyEvents } from './routes/MyEvents'
 import { EventNew } from './routes/EventNew'
 import { EventDetail } from './routes/EventDetail'
-import { AdminEvents } from './routes/AdminEvents'
+import { AdminApprovals } from './routes/admin/AdminApprovals'
+import { PendingApproval } from './routes/PendingApproval'
 import { useIsAdmin } from './hooks/useIsAdmin'
 import { clearReturnTo } from './lib/returnTo'
 
@@ -35,12 +36,20 @@ function Layout({ children }: { children: React.ReactNode }) {
   const status = useProfileStatus(`${location.pathname}#${version}`)
   const [loggingOut, setLoggingOut] = useState(false)
 
-  const person = status.state === 'complete' || status.state === 'incomplete' ? status.person : null
-  // Nav only appears once onboarding is done -- an incomplete profile is
-  // still locked to the wizard by AuthGate, so tabs would just bounce.
+  const person =
+    status.state === 'complete' ||
+    status.state === 'incomplete' ||
+    status.state === 'awaiting_approval'
+      ? status.person
+      : null
+  // Nav only appears once onboarding is done AND the member is approved --
+  // an incomplete profile is locked to the wizard by AuthGate and an
+  // unapproved one to /pending, so tabs would just bounce. (0019)
   const showNav = status.state === 'complete'
-  // Phase 4: admins get an extra item in the account menu (not a tab).
-  const isAdmin = useIsAdmin(showNav)
+  // (5a) Admins get a sixth nav tab. This was an account-menu item in Phase
+  // 4; moderation is frequent enough to deserve the same treatment as every
+  // other section.
+  const isAdmin = useIsAdmin(showNav) === true
 
   async function handleLogout() {
     setLoggingOut(true)
@@ -55,7 +64,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       <header className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
         <div className="flex items-center gap-6">
           <span className="font-heading font-semibold text-lg">Khandelwal Connect</span>
-          {showNav && <HeaderNav />}
+          {showNav && <HeaderNav isAdmin={isAdmin} />}
         </div>
         <div className="flex items-center gap-3">
           <ThemeToggle />
@@ -63,8 +72,10 @@ function Layout({ children }: { children: React.ReactNode }) {
             <UserMenu
               fullName={person.full_name}
               photoUrl={person.profile_photo_url}
-              memberCode={person.member_code}
-              adminHref={isAdmin ? '/admin/events' : undefined}
+              // (0019) An unapproved member has a code but no access -- showing
+              // the ID next to a "under review" screen just reads as a
+              // contradiction, so it appears once they're in.
+              memberCode={showNav ? person.member_code : null}
               onLogout={handleLogout}
               loggingOut={loggingOut}
             />
@@ -72,7 +83,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <main className={`flex-1 flex flex-col ${showNav ? 'pb-16 sm:pb-0' : ''}`}>{children}</main>
-      {showNav && <BottomTabs />}
+      {showNav && <BottomTabs isAdmin={isAdmin} />}
     </div>
   )
 }
@@ -103,10 +114,22 @@ export default function App() {
                   </AuthGate>
                 }
               />
+              {/* (0019) The holding screen between finishing the wizard and
+                  being approved. /profile stays reachable for the same group
+                  -- acting on a "more information needed" note means editing
+                  it -- but nothing else does. */}
+              <Route
+                path="/pending"
+                element={
+                  <AuthGate key="pending" requireComplete allowPending>
+                    <PendingApproval />
+                  </AuthGate>
+                }
+              />
               <Route
                 path="/profile"
                 element={
-                  <AuthGate key="profile" requireComplete>
+                  <AuthGate key="profile" requireComplete allowPending>
                     <Profile />
                   </AuthGate>
                 }
@@ -186,13 +209,23 @@ export default function App() {
                   </AuthGate>
                 }
               />
+              {/* (5a) Both approval queues live under one Approvals page.
+                  /admin/members and /admin/events were the Phase 4 / early-5a
+                  paths and are kept as redirects -- they appear in the phase
+                  summaries and in at least one deployed admin's bookmarks. */}
               <Route
-                path="/admin/events"
+                path="/admin/approvals"
                 element={
-                  <AuthGate key="admin-events" requireComplete>
-                    <AdminEvents />
+                  <AuthGate key="admin-approvals" requireComplete>
+                    <AdminApprovals />
                   </AuthGate>
                 }
+              />
+              <Route path="/admin" element={<Navigate to="/admin/approvals" replace />} />
+              <Route path="/admin/members" element={<Navigate to="/admin/approvals" replace />} />
+              <Route
+                path="/admin/events"
+                element={<Navigate to="/admin/approvals?tab=events" replace />}
               />
             </Routes>
           </Layout>

@@ -107,6 +107,25 @@ function EventsIcon({ size }: { size: number }) {
   )
 }
 
+function AdminIcon({ size }: { size: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  )
+}
+
 const TABS: Tab[] = [
   { to: '/dashboard', label: 'Home', icon: HomeIcon },
   { to: '/directory', label: 'Directory', icon: DirectoryIcon },
@@ -115,21 +134,32 @@ const TABS: Tab[] = [
   { to: '/profile', label: 'Profile', icon: ProfileIcon },
 ]
 
+// (5a) Admins get a sixth tab after Profile rather than an item in the
+// account menu. It lands on Approvals (member + event queues); every
+// /admin/* path lights this one tab.
+const ADMIN_TAB: Tab = { to: '/admin/approvals', label: 'Admin', icon: AdminIcon }
+
+function tabsFor(isAdmin: boolean): Tab[] {
+  return isAdmin ? [...TABS, ADMIN_TAB] : TABS
+}
+
 function isActive(pathname: string, to: string): boolean {
   // /directory also covers /members/:id -- a member profile is reached from
   // the directory, so the tab stays lit there. /businesses covers its own
   // /businesses/:id via the plain prefix match.
   if (to === '/directory') return pathname.startsWith('/directory') || pathname.startsWith('/members')
+  // Every /admin/* page belongs to the one Admin tab.
+  if (to === ADMIN_TAB.to) return pathname.startsWith('/admin')
   return pathname.startsWith(to)
 }
 
 /** Inline nav links for the desktop header (hidden on mobile). */
-export function HeaderNav() {
+export function HeaderNav({ isAdmin = false }: { isAdmin?: boolean }) {
   const { pathname } = useLocation()
 
   return (
     <nav className="hidden sm:flex items-center gap-1" aria-label="Primary">
-      {TABS.map((tab) => {
+      {tabsFor(isAdmin).map((tab) => {
         const active = isActive(pathname, tab.to)
         return (
           <Link
@@ -151,22 +181,30 @@ export function HeaderNav() {
 }
 
 /** Fixed bottom tab bar for mobile (hidden on sm+). */
-export function BottomTabs() {
+export function BottomTabs({ isAdmin = false }: { isAdmin?: boolean }) {
   const { pathname } = useLocation()
+  const tabs = tabsFor(isAdmin)
+  // Five tabs at 11px was already the width ceiling at 360px (Phase 4). The
+  // admin's sixth needs one more notch down so "Businesses" still fits in
+  // its sixth of the bar; everyone else keeps the tuned 11px.
+  const labelSize = tabs.length > 5 ? 'text-[10px]' : 'text-[11px]'
 
   return (
     <nav
       aria-label="Primary"
       className="sm:hidden fixed bottom-0 inset-x-0 z-10 flex border-t border-[var(--color-border)] bg-[var(--color-surface)] pb-[env(safe-area-inset-bottom)]"
     >
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const active = isActive(pathname, tab.to)
         return (
           <Link
             key={tab.to}
             to={tab.to}
             aria-current={active ? 'page' : undefined}
-            className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[11px] whitespace-nowrap transition-colors ${
+            // min-w-0 + overflow-hidden matter here: a flex item defaults to
+            // min-width:auto, so a label wider than its share would widen the
+            // whole bar past the viewport instead of clipping.
+            className={`flex-1 min-w-0 overflow-hidden flex flex-col items-center gap-0.5 py-2 ${labelSize} whitespace-nowrap transition-colors ${
               active
                 ? 'text-[var(--color-accent)]'
                 : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'

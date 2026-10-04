@@ -1,0 +1,386 @@
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Avatar } from '../Avatar'
+import { TabStrip } from '../TabStrip'
+import { ConfirmDialog } from '../ConfirmDialog'
+import { DataTable } from './DataTable'
+import {
+  adminListMembers,
+  adminRole,
+  adminSetMemberStatus,
+  sendMemberStatusEmail,
+  type AdminMemberDecision,
+} from '../../lib/admin'
+import type { AdminMemberRow, AdminRoleName, MemberStatus } from '../../types/database'
+
+const PAGE_SIZE = 20
+
+// The four tabs are the reviewable statuses. 'onboarding' is deliberately not
+// one: those people haven't finished the wizard, so there is nothing to
+// review and admin_set_member_status refuses them anyway.
+type QueueStatus = Extract<MemberStatus, 'pending' | 'info_requested' | 'approved' | 'rejected'>
+
+const TABS: { key: QueueStatus; label: string }[] = [
+  { key: 'pending', label: 'Pending' },
+  { key: 'info_requested', label: 'More info' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'rejected', label: 'Not approved' },
+]
+
+const EMPTY_MESSAGES: Record<QueueStatus, string> = {
+  pending: 'Nothing waiting for review.',
+  info_requested: 'Nobody has been asked for more information.',
+  approved: 'No approved members yet.',
+  rejected: 'Nobody has been turned down.',
+}
+
+function isQueueStatus(value: string | null): value is QueueStatus {
+  return TABS.some((tab) => tab.key === value)
+}
+
+const SUBMITTED_FORMAT = new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium' })
+
+function formatWhen(iso: string | null): string | null {
+  if (!iso) return null
+  return SUBMITTED_FORMAT.format(new Date(iso))
+}
+
+/** What each action does, and what the dialog asks for. Approving needs no
+ *  message; the other two do, because the member reads it on /pending. */
+type PendingAction = {
+  member: AdminMemberRow
+  decision: AdminMemberDecision
+  title: string
+  description?: string
+  prompt?: { label: string; placeholder: string; required: true }
+  confirmLabel: string
+  confirmAccent?: boolean
+}
+
+/** Phase 5a: the member approval queue, one panel of the Approvals section.
+ * AdminApprovals does the is_admin() UI gate for both panels --
+ * admin_list_members / admin_set_member_status re-check it on the server
+ * anyway, and revoking additionally re-checks the super_admin role. */
+export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
+  const [role, setRole] = useState<AdminRoleName | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const statusParam = searchParams.get('status')
+  const status: QueueStatus = isQueueStatus(statusParam) ? statusParam : 'pending'
+
+  const [rows, setRows] = useState<AdminMemberRow[]>([])
+  const [total, setTotal] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [action, setAction] = useState<PendingAction | null>(null)
+
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(handle)
+  }, [search])
+
+  useEffect(() => {
+    let cancelled = false
+    adminRole()
+      .then((r) => {
+        if (!cancelled) setRole(r)
+      })
+      .catch((err) => console.error('[MemberApprovals] failed to read admin role', err))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const load = useCallback(async () => {
+    const page = await adminListMembers({ status, search: debouncedSearch, limit: PAGE_SIZE })
+    setRows(page)
+    setTotal(page.length > 0 ? Number(page[0].total_count) : 0)
+  }, [status, debouncedSearch])
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    load()
+      .catch((err) => {
+        if (cancelled) return
+        console.error('[MemberApprovals] failed to load members', err)
+        setError(err instanceof Error ? err.message : 'Something went wrong loading members.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [load])
+
+  async function loadMore() {
+    setLoadingMore(true)
+    try {
+      const page = await adminListMembers({
+        status,
+        search: debouncedSearch,
+        limit: PAGE_SIZE,
+        offset: rows.length,
+      })
+      setRows((current) => [...current, ...page])
+    } catch (err) {
+      console.error('[MemberApprovals] failed to load more', err)
+      setError(err instanceof Error ? err.message : 'Could not load more members.')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  async function runAction(pending: PendingAction, message: string) {
+    setBusyId(pending.member.id)
+    setError(null)
+    setNote(null)
+    try {
+      await adminSetMemberStatus(pending.member.id, pending.decision, message || undefined)
+      // The review itself is committed at this point. A failed email must not
+      // read as a failed decision, so it degrades to a note.
+      try {
+        await sendMemberStatusEmail(pending.member.id, pending.decision)
+      } catch (emailErr) {
+        console.error('[MemberApprovals] status saved but email failed', emailErr)
+        setNote(
+          `Saved, but the email to ${pending.member.full_name} could not be sent: ${
+            emailErr instanceof Error ? emailErr.message : 'unknown error'
+          }`,
+        )
+      }
+      setAction(null)
+      await load()
+      onChanged?.()
+    } catch (err) {
+      console.error('[MemberApprovals] failed to set member status', err)
+      setError(err instanceof Error ? err.message : 'Could not update this member.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  function approve(member: AdminMemberRow) {
+    setAction({
+      member,
+      decision: 'approved',
+      title: `Approve ${member.full_name}?`,
+      description: 'They get full access to the directory, businesses and events, and an email saying so.',
+      confirmLabel: 'Approve',
+      confirmAccent: true,
+    })
+  }
+
+  function requestInfo(member: AdminMemberRow) {
+    setAction({
+      member,
+      decision: 'info_requested',
+      title: `Ask ${member.full_name} for more information`,
+      prompt: {
+        label: 'What do they need to add or fix?',
+        placeholder: 'e.g. Please add your native place and a clearer photo.',
+        required: true,
+      },
+      confirmLabel: 'Send request',
+    })
+  }
+
+  function reject(member: AdminMemberRow) {
+    const revoking = member.member_status === 'approved'
+    setAction({
+      member,
+      decision: 'rejected',
+      title: revoking ? `Revoke ${member.full_name}'s membership?` : `Turn down ${member.full_name}?`,
+      description: revoking
+        ? 'They lose access to everything except their own profile immediately.'
+        : undefined,
+      prompt: {
+        label: 'Reason',
+        placeholder: 'The member sees this, so keep it factual.',
+        required: true,
+      },
+      confirmLabel: revoking ? 'Revoke membership' : 'Turn down',
+    })
+  }
+
+  const hasMore = total !== null && rows.length < total
+  // The two archive tabs show when a decision was made; the queues show how
+  // long someone has been waiting.
+  const reviewedTab = status === 'approved' || status === 'rejected'
+
+  return (
+    <div className="flex flex-col gap-5">
+      <TabStrip
+        tabs={TABS}
+        active={status}
+        onChange={(key) => {
+          // Merge rather than replace: the parent's ?tab= lives in the same
+          // query string and must survive a status change.
+          const next = new URLSearchParams(searchParams)
+          if (key === 'pending') next.delete('status')
+          else next.set('status', key)
+          setSearchParams(next, { replace: true })
+        }}
+        label="Member review queue"
+      />
+
+      <input
+        type="search"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Search name, member ID or mobile"
+        className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
+      />
+
+      {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}
+      {note && <p className="text-sm text-[var(--color-text-muted)]">{note}</p>}
+
+      {loading ? (
+        <p className="text-sm text-[var(--color-text-muted)]">Loading members…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-[var(--color-text-muted)]">
+          {debouncedSearch ? 'No members match your search.' : EMPTY_MESSAGES[status]}
+        </p>
+      ) : (
+        <>
+          <p className="text-sm text-[var(--color-text-muted)]">
+            {total} {total === 1 ? 'member' : 'members'}
+          </p>
+          <DataTable
+            rows={rows}
+            rowKey={(member) => member.id}
+            empty={EMPTY_MESSAGES[status]}
+            primary={{
+              header: 'Member',
+              cell: (member) => (
+                <div className="flex items-start gap-2.5">
+                  <Avatar name={member.full_name} photoUrl={member.profile_photo_url} size={32} />
+                  <div className="min-w-0">
+                    <p className="font-medium">{member.full_name}</p>
+                    {member.member_code && (
+                      <p className="text-xs tracking-wide text-[var(--color-text-muted)]">
+                        {member.member_code}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ),
+            }}
+            columns={[
+              {
+                key: 'contact',
+                header: 'Contact',
+                cell: (member) => (
+                  <div className="flex flex-col">
+                    <span>{member.mobile_number ?? '—'}</span>
+                    {member.email && (
+                      <span className="break-all text-xs text-[var(--color-text-muted)]">
+                        {member.email}
+                      </span>
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: 'place',
+                header: 'Location',
+                cell: (member) =>
+                  [member.current_city, member.current_state].filter(Boolean).join(', ') || '—',
+              },
+              { key: 'gotra', header: 'Gotra', cell: (member) => member.gotra ?? '—' },
+              {
+                key: 'when',
+                header: reviewedTab ? 'Reviewed' : 'Submitted',
+                align: 'right',
+                cell: (member) =>
+                  formatWhen(reviewedTab ? member.reviewed_at : member.submitted_at) ?? '—',
+              },
+            ]}
+            detail={(member) =>
+              member.admin_message ? (
+                <p className="rounded-lg border-l-2 border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm whitespace-pre-line">
+                  {member.admin_message}
+                </p>
+              ) : null
+            }
+            actions={(member) => {
+              const busy = busyId === member.id
+              const canRevoke = status === 'approved' && role === 'super_admin'
+              return (
+                <>
+                  {status !== 'approved' && (
+                    <button
+                      type="button"
+                      onClick={() => approve(member)}
+                      disabled={busy}
+                      className="rounded-lg bg-[var(--color-accent)] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+                    >
+                      Approve
+                    </button>
+                  )}
+                  {status !== 'approved' && (
+                    <button
+                      type="button"
+                      onClick={() => requestInfo(member)}
+                      disabled={busy}
+                      className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm whitespace-nowrap hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+                    >
+                      Request info
+                    </button>
+                  )}
+                  {status !== 'rejected' && (status !== 'approved' || canRevoke) && (
+                    <button
+                      type="button"
+                      onClick={() => reject(member)}
+                      disabled={busy}
+                      className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm whitespace-nowrap hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+                    >
+                      {status === 'approved' ? 'Revoke' : 'Turn down'}
+                    </button>
+                  )}
+                  <Link
+                    to={`/members/${member.id}`}
+                    className="text-sm whitespace-nowrap text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
+                  >
+                    View
+                  </Link>
+                </>
+              )
+            }}
+          />
+
+          {hasMore && (
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="self-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+            >
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          )}
+        </>
+      )}
+
+      <ConfirmDialog
+        open={action !== null}
+        title={action?.title ?? ''}
+        description={action?.description}
+        prompt={action?.prompt}
+        confirmLabel={action?.confirmLabel ?? 'Confirm'}
+        confirmAccent={action?.confirmAccent}
+        busy={busyId !== null}
+        onConfirm={(value) => {
+          if (action) runAction(action, value)
+        }}
+        onCancel={() => setAction(null)}
+      />
+    </div>
+  )
+}

@@ -8,6 +8,9 @@ export type ProfileStatus =
   | { state: 'loading' }
   | { state: 'anonymous' }
   | { state: 'incomplete'; person: Person | null; authUserId: string }
+  // (0019) Wizard done, but an admin hasn't approved the member yet --
+  // pending, info_requested or rejected. AuthGate sends these to /pending.
+  | { state: 'awaiting_approval'; person: Person }
   | { state: 'complete'; person: Person }
   | { state: 'error'; message: string; retry: () => void }
 
@@ -38,20 +41,39 @@ export function useProfileStatus(refreshKey?: unknown): ProfileStatus {
         if (cancelled) return
 
         if (person && isWizardComplete(person)) {
-          // Assign a member code the first time a profile is seen complete.
-          // state_code is populated client-side from the state dropdown
-          // (see formOptions.ts) -- the RPC only handles collision-safe
-          // number assignment, not the name -> code lookup.
-          if (!person.member_code) {
+          // Submit the profile for review the first time it is seen complete,
+          // which also assigns the member code. state_code is populated
+          // client-side from the state dropdown (see formOptions.ts) -- the
+          // RPC only handles collision-safe number assignment, not the name
+          // -> code lookup. (0019) This replaced a bare assign_member_code
+          // call; submit_for_review does that *and* moves 'onboarding' ->
+          // 'pending'. It is idempotent for an already-approved member, so it
+          // is safe on every load, and it catches the historical rows that
+          // completed the wizard but never got a code.
+          if (person.member_status === 'onboarding' || !person.member_code) {
             try {
-              const { data: code, error: rpcError } = await supabase.rpc('assign_member_code')
-              if (!rpcError && code) person = { ...person, member_code: code }
+              const { data: code, error: rpcError } = await supabase.rpc('submit_for_review')
+              if (!rpcError) {
+                person = {
+                  ...person,
+                  member_code: code ?? person.member_code,
+                  member_status: person.member_status === 'onboarding' ? 'pending' : person.member_status,
+                }
+              }
             } catch (rpcErr) {
-              console.error('[useProfileStatus] failed to assign member code', rpcErr)
+              console.error('[useProfileStatus] failed to submit profile for review', rpcErr)
             }
             if (cancelled) return
           }
-          setStatus({ state: 'complete', person })
+
+          // Strict equality on purpose: if this build ever runs against a
+          // database without 0019, member_status is undefined and everyone
+          // lands on /pending rather than silently getting full access.
+          if (person.member_status === 'approved') {
+            setStatus({ state: 'complete', person })
+          } else {
+            setStatus({ state: 'awaiting_approval', person })
+          }
         } else {
           setStatus({ state: 'incomplete', person, authUserId: session.user.id })
         }

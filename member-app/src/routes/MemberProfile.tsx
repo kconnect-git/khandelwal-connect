@@ -221,8 +221,14 @@ export function MemberProfile() {
         ]}
       />
 
+      {/* (0019) get_member_profile returns a null mobile when the member has
+          turned on "Hide my number", so say so rather than dropping the whole
+          Contact section and leaving the reader wondering. */}
       {!isSelf && (
-        <Section title="Contact" rows={[{ label: 'Mobile', value: profile.mobile_number }]} />
+        <Section
+          title="Contact"
+          rows={[{ label: 'Mobile', value: profile.mobile_number ?? 'Hidden by this member' }]}
+        />
       )}
     </div>
   )

@@ -11,5 +11,6 @@ export function RootRedirect() {
   }
   if (status.state === 'anonymous') return <Navigate to="/signup" replace />
   if (status.state === 'incomplete') return <Navigate to="/onboarding" replace />
+  if (status.state === 'awaiting_approval') return <Navigate to="/pending" replace />
   return <Navigate to="/dashboard" replace />
 }

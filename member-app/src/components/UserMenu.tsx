@@ -1,25 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Avatar } from './Avatar'
 
 type UserMenuProps = {
   fullName: string | null | undefined
   photoUrl?: string | null
   memberCode?: string | null
-  /** Phase 4: set only for admins -- renders an "Admin · Events" item. */
-  adminHref?: string
   onLogout: () => void
   loggingOut?: boolean
 }
 
-export function UserMenu({
-  fullName,
-  photoUrl,
-  memberCode,
-  adminHref,
-  onLogout,
-  loggingOut,
-}: UserMenuProps) {
+// Phase 4 put an "Admin · Events" link in here. 5a moved admin onto its own
+// nav tab (NavTabs), so this is back to member ID + log out.
+export function UserMenu({ fullName, photoUrl, memberCode, onLogout, loggingOut }: UserMenuProps) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -66,16 +58,6 @@ export function UserMenu({
               <p className="text-xs text-[var(--color-text-muted)]">Member ID</p>
               <p className="text-sm font-medium tracking-wide">{memberCode}</p>
             </div>
-          )}
-          {adminHref && (
-            <Link
-              to={adminHref}
-              role="menuitem"
-              onClick={() => setOpen(false)}
-              className="block px-3 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors"
-            >
-              Admin · Events
-            </Link>
           )}
           <button
             type="button"

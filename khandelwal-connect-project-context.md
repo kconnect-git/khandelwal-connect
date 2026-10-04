@@ -6,7 +6,7 @@ This document captures all product, design, and technical decisions made during 
 
 ## 0. Current status (read this first)
 
-**Phases 0, 1, 2, 3a, 3b, 3c, and 4 are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, **`phase-3c-summary.md`**, and **`phase-4-summary.md`** before starting Phase 5. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
+**Phases 0, 1, 2, 3a, 3b, 3c, 4, and 5a are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, **`phase-3c-summary.md`**, **`phase-4-summary.md`**, and **`phase-5a-summary.md`** before starting Phase 5b. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
 
 Phase 0 (backend foundation):
 - ✅ Supabase project created (region: Singapore), email auth + Resend SMTP, OTP email template edited to show the 6-digit code
@@ -60,7 +60,16 @@ Phase 4 (events — migration `0018`; **scope changed from "admin-created" to me
 - ✅ Deep-link return after login (`lib/returnTo.ts`), Events nav tab, dashboard Events tile
 - ❌ Not built: cover images, waitlists, reminders, inviting non-members. See `phase-4-summary.md`.
 
-**Immediate next step:** read the six phase summaries (especially `phase-4-summary.md` §2 and §4), then plan Phase 5 (admin console).
+Phase 5a (member approval gate — migration `0019`; Phase 5 was split into 5a/5b/5c during planning):
+- ✅ `people.member_status` replaces `member_code is not null` as **the** membership gate, rewritten across 24 sites (2 RLS policies, 3 family lookups, 3 directory / 4 business RPCs, the 11 event RPCs). Eight read RPCs that never checked the *caller* now do, via `is_approved_member()`
+- ✅ A new member lands on `/pending` until an admin approves; existing members grandfathered by the backfill. `/profile` stays reachable so they can act on a "more information needed" note
+- ✅ `/admin/approvals` — one page, two tabs (Members · Events) each badged with its pending count. Both render through a responsive `DataTable` (real table from 768px up, stacked cards below). Member queue: Approve / Request info / Turn down, plus super_admin Revoke. `admins.role`, `admin_audit_log` entries, and the `send-member-status` Edge Function (three templates, non-fatal on failure)
+- ✅ Admin is now a **sixth nav tab** for admins (not an account-menu item as in Phase 4), landing on Approvals — bottom-bar labels drop to 10px only in that case; a seventh section would need a "More" menu
+- ✅ `people_protect_review_columns` trigger — closes the hole where `own row update` let a member set their own `member_status` (and, since Phase 1, their own `member_code`)
+- ✅ "Hide my number" toggle (`people.hide_mobile`), the escape hatch promised in `phase-3a-summary.md`
+- ❌ Not built: admin management UI, admin member detail view, filters / CSV, audit-log viewer, resend-email. See `phase-5a-summary.md`.
+
+**Immediate next step:** read the seven phase summaries (especially `phase-5a-summary.md` §2 and §4), then build Phase 5b (the admin console shell, members table, businesses moderation, audit log, admin management).
 
 ---
 
@@ -270,7 +279,10 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 - [x] **Added during planning**: member-created events with admin approval, `members` / `invite_only` visibility, invitee list + explicit invite emails, minimal admin queue
 - **Exit criteria (revised)**: a member-created event is approved by an admin, shows up, members can RSVP — met. Full details in `phase-4-summary.md`
 
-### Phase 5 — Admin console (Weeks 7–8, can run parallel to Phase 3–4)
+### Phase 5 — Admin console (Weeks 7–8) — split into 5a (done) / 5b / 5c
+- [x] **5a: the approval gate** — `member_status`, `/pending`, `/admin/members`, `admins.role`, status emails, "Hide my number". **Exit criterion met**: an admin approves a new member end to end and the member sees the change. Full details in `phase-5a-summary.md`
+- [ ] **5b: the console** — `/admin/*` shell + `AdminContext`, overview dashboard, members table with filters + CSV export, member detail view, businesses moderation (`is_hidden`), events queue rewritten onto the shell, audit-log viewer, admin management
+- [ ] **5c: notices** — in-app only: `notices` + `notice_reads`, audience targeting by state / city / gotra / occupation, composer with a live "will reach N members" count, dashboard strip + header bell
 - Admin auth/role check (separate from member auth)
 - Overview dashboard (counters, activity log)
 - Member records table (search, filters, CSV export)
@@ -300,8 +312,8 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 - ~~Exact RLS policy wording for `people` table visibility~~ — **decided in Phase 3a**: `people` stays self-only; cross-member reads go through `SECURITY DEFINER` RPCs with fixed column tiers (see `phase-3a-summary.md` §1–2)
 - ~~Access model for `businesses` in Phase 3b~~ — **decided in Phase 3b**: hybrid — real RLS for owner writes, `SECURITY DEFINER` RPCs for reads that join the owner (see `phase-3b-summary.md` §1/§4).
 - ~~Access model for events~~ — **decided in Phase 4**: RPC-only writes (no table write policies) because of the status lifecycle; see `phase-4-summary.md` §2. Matrimony should copy the events model, not the businesses one.
-- ~~Admin role check~~ — **decided in Phase 4**: `admins` table keyed by auth user id + `is_admin()`. Phase 5 extends this table rather than adding a role column on `people`.
-- Per-user "hide my number" toggle — planned follow-up to Phase 3a's decision to print mobile numbers on profiles
+- ~~Admin role check~~ — **decided in Phase 4**: `admins` table keyed by auth user id + `is_admin()`. Phase 5a duly extended that table with `role` (super_admin / moderator) rather than adding a column on `people`; `is_admin()` still means "any admin", `admin_role()` is the new discriminator.
+- ~~Per-user "hide my number" toggle~~ — **built in Phase 5a** (`people.hide_mobile`; `get_member_profile` / `search_registered_members` null the number, admins still see it)
 - Whether dues/payments launch in v1 or a later phase
 - Self-hosting fonts vs. CDN (deferred until design is locked)
 - Team size/timeline — the sprint plan above assumes 1–2 developers; adjust phase lengths accordingly

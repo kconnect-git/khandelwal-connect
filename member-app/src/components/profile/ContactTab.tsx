@@ -5,9 +5,23 @@ import type { PersonTabProps } from './tabTypes'
 type ContactTabProps = PersonTabProps & {
   /** The sign-in email from the auth session. Read-only here. */
   primaryEmail: string | null
+  /** (0019) "Hide my number". Saved on toggle, not with the tab's Save
+   * button, so the member gets immediate feedback on a privacy control. */
+  hideMobile: boolean
+  onHideMobileChange: (hide: boolean) => void
+  hideMobileBusy?: boolean
 }
 
-export function ContactTab({ value, onChange, saveState, onSave, primaryEmail }: ContactTabProps) {
+export function ContactTab({
+  value,
+  onChange,
+  saveState,
+  onSave,
+  primaryEmail,
+  hideMobile,
+  onHideMobileChange,
+  hideMobileBusy,
+}: ContactTabProps) {
   return (
     <div className="w-full flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
@@ -51,6 +65,24 @@ export function ContactTab({ value, onChange, saveState, onSave, primaryEmail }:
         }}
         placeholder="98765 43210"
       />
+
+      <label className="flex items-start gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3">
+        <input
+          type="checkbox"
+          checked={hideMobile}
+          disabled={hideMobileBusy}
+          onChange={(event) => onHideMobileChange(event.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]"
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">Hide my number from other members</span>
+          <span className="text-xs text-[var(--color-text-muted)]">
+            Your primary mobile stays off your profile and out of member search. Admins can still
+            see it.
+          </span>
+        </span>
+      </label>
+
       <TabSaveBar state={saveState} onSave={onSave} />
     </div>
   )

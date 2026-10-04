@@ -289,7 +289,7 @@ export function EventDetail() {
 
       {event.is_admin && event.status === 'pending' && (
         <Link
-          to="/admin/events"
+          to="/admin/approvals?tab=events"
           className="self-start text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
         >
           Review in the admin queue ›

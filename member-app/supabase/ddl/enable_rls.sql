@@ -10,6 +10,12 @@ alter table children enable row level security;
 alter table family_relations enable row level security;
 
 -- placeholder: users can read and edit only their own people row for now
+--
+-- (0019) "own row update" is column-blind, so it would also let a member
+-- write member_status / admin_message / reviewed_* / member_code on their own
+-- row and approve themselves. The people_protect_review_columns trigger in
+-- core_schema.sql blocks exactly those columns on the client path; keep it in
+-- mind before widening this policy.
 create policy "own row read" on people for select
   using (auth.uid() = auth_user_id);
 create policy "own row update" on people for update
@@ -43,12 +49,14 @@ create policy "own family relations update" on family_relations for update
 create policy "own family relations delete" on family_relations for delete
   using (person_id in (select id from people where auth.uid() = auth_user_id));
 
--- Phase 3b (0014): businesses -- any onboarded member reads, owner writes.
--- Any member who has completed onboarding can read listings. The subquery
--- runs under people's own self-only policy, which is exactly enough here
--- (we only need the caller's own row).
+-- Phase 3b (0014): businesses -- any approved member reads, owner writes.
+-- (0019) Reading is now gated on approval, not merely on having onboarded.
+-- The owner clause matters: getMyBusinesses() in lib/businesses.ts selects
+-- this table directly, so without it a member awaiting approval would lose
+-- their own Profile > Business tab.
 create policy "members read businesses" on businesses for select
-  using (exists (select 1 from people where auth_user_id = auth.uid() and member_code is not null));
+  using (is_approved_member()
+         or owner_id in (select id from people where auth_user_id = auth.uid()));
 
 create policy "own business insert" on businesses for insert
   with check (owner_id in (select id from people where auth_user_id = auth.uid()));
@@ -68,7 +76,7 @@ alter table admins enable row level security;
 create policy "events visible read" on events for select
   using (
     (status in ('approved', 'cancelled') and visibility = 'members'
-       and exists (select 1 from people where auth_user_id = auth.uid() and member_code is not null))
+       and is_approved_member())
     or creator_id in (select id from people where auth_user_id = auth.uid())
     or exists (select 1 from event_invites i join people p on p.id = i.person_id
                where i.event_id = events.id and p.auth_user_id = auth.uid())
