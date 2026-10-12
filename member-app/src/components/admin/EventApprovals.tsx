@@ -1,14 +1,34 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { TabStrip } from '../TabStrip'
 import { DataTable, type Column } from './DataTable'
 import { formatEventWhen, eventPlaceLine } from '../../lib/events'
 import { adminListEvents, adminSetEventStatus, type AdminEventRow } from '../../lib/admin'
+import type { EventStatus } from '../../types/database'
 
-const RECENT_LIMIT = 10
+const PAGE_SIZE = 20
 
-// One column set for all three sections -- they differ only in their actions
-// and in whether a rejection reason hangs under the row.
+const TABS: { key: EventStatus; label: string }[] = [
+  { key: 'pending', label: 'Pending' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'cancelled', label: 'Cancelled' },
+]
+
+const EMPTY_MESSAGES: Record<EventStatus, string> = {
+  pending: 'Nothing waiting for review.',
+  approved: 'No approved events.',
+  rejected: 'No rejected events.',
+  cancelled: 'No cancelled events.',
+}
+
+function isEventStatus(value: string | null): value is EventStatus {
+  return TABS.some((tab) => tab.key === value)
+}
+
+// One column set for every tab -- they differ only in their actions and in
+// whether a rejection reason hangs under the row.
 const EVENT_COLUMNS: Column<AdminEventRow>[] = [
   {
     key: 'when',
@@ -72,34 +92,42 @@ type PendingAction = {
   confirmLabel: string
 }
 
-/** Phase 4's event queue, now one panel of the Approvals section (5a).
- * AdminApprovals does the is_admin() UI gate for both panels; every RPC
- * re-checks it on the server. Phase 5b gives this status tabs, search and
- * pagination past 50 pending. */
+/** Phase 4's event queue, one panel of the Approvals section (5a). (5b-2)
+ * Rebuilt in MemberApprovals' shape: status tabs (`?status=`, merged into
+ * the parent's query string), search, and Load more instead of three stacked
+ * sections capped at 50. AdminLayout does the UI admin gate; every RPC
+ * re-checks it on the server. */
 export function EventApprovals({ onChanged }: { onChanged?: () => void }) {
-  const [pending, setPending] = useState<AdminEventRow[]>([])
-  const [approved, setApproved] = useState<AdminEventRow[]>([])
-  const [rejected, setRejected] = useState<AdminEventRow[]>([])
+  const [searchParams, setSearchParams] = useSearchParams()
+  const statusParam = searchParams.get('status')
+  const status: EventStatus = isEventStatus(statusParam) ? statusParam : 'pending'
+
+  const [rows, setRows] = useState<AdminEventRow[]>([])
+  const [total, setTotal] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [action, setAction] = useState<PendingAction | null>(null)
 
-  const reload = useCallback(async () => {
-    const [p, a, r] = await Promise.all([
-      adminListEvents({ status: 'pending', limit: 50 }),
-      adminListEvents({ status: 'approved', limit: RECENT_LIMIT }),
-      adminListEvents({ status: 'rejected', limit: RECENT_LIMIT }),
-    ])
-    setPending(p)
-    setApproved(a)
-    setRejected(r)
-  }, [])
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(handle)
+  }, [search])
+
+  const load = useCallback(async () => {
+    const page = await adminListEvents({ status, search: debouncedSearch, limit: PAGE_SIZE })
+    setRows(page)
+    setTotal(page.length > 0 ? Number(page[0].total_count) : 0)
+  }, [status, debouncedSearch])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    reload()
+    setError(null)
+    load()
       .catch((err) => {
         if (cancelled) return
         console.error('[EventApprovals] failed to load', err)
@@ -111,19 +139,37 @@ export function EventApprovals({ onChanged }: { onChanged?: () => void }) {
     return () => {
       cancelled = true
     }
-  }, [reload])
+  }, [load])
+
+  async function loadMore() {
+    setLoadingMore(true)
+    try {
+      const page = await adminListEvents({
+        status,
+        search: debouncedSearch,
+        limit: PAGE_SIZE,
+        offset: rows.length,
+      })
+      setRows((current) => [...current, ...page])
+    } catch (err) {
+      console.error('[EventApprovals] failed to load more', err)
+      setError(err instanceof Error ? err.message : 'Could not load more events.')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   async function act(
     event: AdminEventRow,
-    status: 'approved' | 'rejected' | 'cancelled',
+    nextStatus: 'approved' | 'rejected' | 'cancelled',
     reason?: string,
   ) {
     setBusyId(event.id)
     setError(null)
     try {
-      await adminSetEventStatus(event.id, status, reason)
+      await adminSetEventStatus(event.id, nextStatus, reason)
       setAction(null)
-      await reload()
+      await load()
       onChanged?.()
     } catch (err) {
       console.error('[EventApprovals] action failed', err)
@@ -157,100 +203,118 @@ export function EventApprovals({ onChanged }: { onChanged?: () => void }) {
     })
   }
 
+  // Only pending and approved events have anything left to decide;
+  // admin_set_event_status refuses the rest regardless.
+  const hasActions = status === 'pending' || status === 'approved'
+  const hasMore = total !== null && rows.length < total
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
+      <TabStrip
+        tabs={TABS}
+        active={status}
+        onChange={(key) => {
+          // Merge rather than replace: the parent's ?tab= lives in the same
+          // query string and must survive a status change.
+          const next = new URLSearchParams(searchParams)
+          if (key === 'pending') next.delete('status')
+          else next.set('status', key)
+          setSearchParams(next, { replace: true })
+        }}
+        label="Event review queue"
+      />
+
+      <input
+        type="search"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Search title, organiser or city"
+        className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
+      />
+
       {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-[var(--color-text-muted)]">Loading…</p>
+        <p className="text-sm text-[var(--color-text-muted)]">Loading events…</p>
       ) : (
         <>
-          <section className="flex flex-col gap-2">
-            <h2 className="text-xs font-semibold tracking-widest text-[var(--color-text-muted)] uppercase">
-              Pending
-            </h2>
-            <DataTable
-              rows={pending}
-              rowKey={(event) => event.id}
-              primary={EVENT_PRIMARY}
-              columns={EVENT_COLUMNS}
-              empty="Nothing waiting for review."
-              actions={(event) => {
-                const busy = busyId === event.id
-                return (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => act(event, 'approved')}
-                      disabled={busy}
-                      className="rounded-lg bg-[var(--color-accent)] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-60"
-                    >
-                      {busy ? '…' : 'Approve'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => reject(event)}
-                      disabled={busy}
-                      className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm transition-colors hover:bg-[var(--color-surface-hover)] disabled:opacity-60"
-                    >
-                      Reject
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => cancel(event)}
-                      disabled={busy}
-                      className="px-1 text-sm whitespace-nowrap text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)] disabled:opacity-60"
-                    >
-                      Cancel
-                    </button>
-                  </>
-                )
-              }}
-            />
-          </section>
+          {rows.length > 0 && (
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {total} {total === 1 ? 'event' : 'events'}
+            </p>
+          )}
+          <DataTable
+            rows={rows}
+            rowKey={(event) => event.id}
+            primary={EVENT_PRIMARY}
+            columns={EVENT_COLUMNS}
+            empty={debouncedSearch ? 'No events match your search.' : EMPTY_MESSAGES[status]}
+            detail={(event) =>
+              status === 'rejected' && event.rejection_reason ? (
+                <p className="rounded-lg border-l-2 border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm whitespace-pre-line">
+                  Reason: {event.rejection_reason}
+                </p>
+              ) : null
+            }
+            actions={
+              hasActions
+                ? (event) => {
+                    const busy = busyId === event.id
+                    if (status === 'approved') {
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => cancel(event)}
+                          disabled={busy}
+                          className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm whitespace-nowrap transition-colors hover:bg-[var(--color-surface-hover)] disabled:opacity-60"
+                        >
+                          Cancel event
+                        </button>
+                      )
+                    }
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => act(event, 'approved')}
+                          disabled={busy}
+                          className="rounded-lg bg-[var(--color-accent)] px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:opacity-60"
+                        >
+                          {busy ? '…' : 'Approve'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => reject(event)}
+                          disabled={busy}
+                          className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm transition-colors hover:bg-[var(--color-surface-hover)] disabled:opacity-60"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => cancel(event)}
+                          disabled={busy}
+                          className="px-1 text-sm whitespace-nowrap text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)] disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    )
+                  }
+                : undefined
+            }
+          />
 
-          <section className="flex flex-col gap-2">
-            <h2 className="text-xs font-semibold tracking-widest text-[var(--color-text-muted)] uppercase">
-              Recently approved
-            </h2>
-            <DataTable
-              rows={approved}
-              rowKey={(event) => event.id}
-              primary={EVENT_PRIMARY}
-              columns={EVENT_COLUMNS}
-              empty="None yet."
-              actions={(event) => (
-                <button
-                  type="button"
-                  onClick={() => cancel(event)}
-                  disabled={busyId === event.id}
-                  className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm whitespace-nowrap transition-colors hover:bg-[var(--color-surface-hover)] disabled:opacity-60"
-                >
-                  Cancel event
-                </button>
-              )}
-            />
-          </section>
-
-          <section className="flex flex-col gap-2">
-            <h2 className="text-xs font-semibold tracking-widest text-[var(--color-text-muted)] uppercase">
-              Recently rejected
-            </h2>
-            <DataTable
-              rows={rejected}
-              rowKey={(event) => event.id}
-              primary={EVENT_PRIMARY}
-              columns={EVENT_COLUMNS}
-              empty="None yet."
-              detail={(event) =>
-                event.rejection_reason ? (
-                  <p className="rounded-lg border-l-2 border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm whitespace-pre-line">
-                    Reason: {event.rejection_reason}
-                  </p>
-                ) : null
-              }
-            />
-          </section>
+          {hasMore && (
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="self-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+            >
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          )}
         </>
       )}
 

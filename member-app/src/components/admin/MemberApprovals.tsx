@@ -2,16 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Avatar } from '../Avatar'
 import { TabStrip } from '../TabStrip'
-import { ConfirmDialog } from '../ConfirmDialog'
 import { DataTable } from './DataTable'
-import {
-  adminListMembers,
-  adminRole,
-  adminSetMemberStatus,
-  sendMemberStatusEmail,
-  type AdminMemberDecision,
-} from '../../lib/admin'
-import type { AdminMemberRow, AdminRoleName, MemberStatus } from '../../types/database'
+import { adminListMembers } from '../../lib/admin'
+import { useAdmin } from '../../context/AdminContext'
+import { useMemberDecision } from '../../hooks/useMemberDecision'
+import type { AdminMemberRow, MemberStatus } from '../../types/database'
 
 const PAGE_SIZE = 20
 
@@ -45,24 +40,14 @@ function formatWhen(iso: string | null): string | null {
   return SUBMITTED_FORMAT.format(new Date(iso))
 }
 
-/** What each action does, and what the dialog asks for. Approving needs no
- *  message; the other two do, because the member reads it on /pending. */
-type PendingAction = {
-  member: AdminMemberRow
-  decision: AdminMemberDecision
-  title: string
-  description?: string
-  prompt?: { label: string; placeholder: string; required: true }
-  confirmLabel: string
-  confirmAccent?: boolean
-}
-
 /** Phase 5a: the member approval queue, one panel of the Approvals section.
- * AdminApprovals does the is_admin() UI gate for both panels --
- * admin_list_members / admin_set_member_status re-check it on the server
- * anyway, and revoking additionally re-checks the super_admin role. */
+ * AdminLayout does the UI admin gate (5b-1) -- admin_list_members /
+ * admin_set_member_status re-check is_admin() on the server anyway, and
+ * revoking additionally re-checks the super_admin role. The decision dialog
+ * and email sequence live in useMemberDecision, shared with the member
+ * detail screen. */
 export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
-  const [role, setRole] = useState<AdminRoleName | null>(null)
+  const { role } = useAdmin()
   const [searchParams, setSearchParams] = useSearchParams()
   const statusParam = searchParams.get('status')
   const status: QueueStatus = isQueueStatus(statusParam) ? statusParam : 'pending'
@@ -74,32 +59,24 @@ export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [note, setNote] = useState<string | null>(null)
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [action, setAction] = useState<PendingAction | null>(null)
 
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(handle)
   }, [search])
 
-  useEffect(() => {
-    let cancelled = false
-    adminRole()
-      .then((r) => {
-        if (!cancelled) setRole(r)
-      })
-      .catch((err) => console.error('[MemberApprovals] failed to read admin role', err))
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const load = useCallback(async () => {
     const page = await adminListMembers({ status, search: debouncedSearch, limit: PAGE_SIZE })
     setRows(page)
     setTotal(page.length > 0 ? Number(page[0].total_count) : 0)
   }, [status, debouncedSearch])
+
+  const decision = useMemberDecision({
+    onDecided: async () => {
+      await load()
+      onChanged?.()
+    },
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -137,78 +114,6 @@ export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
     }
   }
 
-  async function runAction(pending: PendingAction, message: string) {
-    setBusyId(pending.member.id)
-    setError(null)
-    setNote(null)
-    try {
-      await adminSetMemberStatus(pending.member.id, pending.decision, message || undefined)
-      // The review itself is committed at this point. A failed email must not
-      // read as a failed decision, so it degrades to a note.
-      try {
-        await sendMemberStatusEmail(pending.member.id, pending.decision)
-      } catch (emailErr) {
-        console.error('[MemberApprovals] status saved but email failed', emailErr)
-        setNote(
-          `Saved, but the email to ${pending.member.full_name} could not be sent: ${
-            emailErr instanceof Error ? emailErr.message : 'unknown error'
-          }`,
-        )
-      }
-      setAction(null)
-      await load()
-      onChanged?.()
-    } catch (err) {
-      console.error('[MemberApprovals] failed to set member status', err)
-      setError(err instanceof Error ? err.message : 'Could not update this member.')
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  function approve(member: AdminMemberRow) {
-    setAction({
-      member,
-      decision: 'approved',
-      title: `Approve ${member.full_name}?`,
-      description: 'They get full access to the directory, businesses and events, and an email saying so.',
-      confirmLabel: 'Approve',
-      confirmAccent: true,
-    })
-  }
-
-  function requestInfo(member: AdminMemberRow) {
-    setAction({
-      member,
-      decision: 'info_requested',
-      title: `Ask ${member.full_name} for more information`,
-      prompt: {
-        label: 'What do they need to add or fix?',
-        placeholder: 'e.g. Please add your native place and a clearer photo.',
-        required: true,
-      },
-      confirmLabel: 'Send request',
-    })
-  }
-
-  function reject(member: AdminMemberRow) {
-    const revoking = member.member_status === 'approved'
-    setAction({
-      member,
-      decision: 'rejected',
-      title: revoking ? `Revoke ${member.full_name}'s membership?` : `Turn down ${member.full_name}?`,
-      description: revoking
-        ? 'They lose access to everything except their own profile immediately.'
-        : undefined,
-      prompt: {
-        label: 'Reason',
-        placeholder: 'The member sees this, so keep it factual.',
-        required: true,
-      },
-      confirmLabel: revoking ? 'Revoke membership' : 'Turn down',
-    })
-  }
-
   const hasMore = total !== null && rows.length < total
   // The two archive tabs show when a decision was made; the queues show how
   // long someone has been waiting.
@@ -238,8 +143,10 @@ export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
         className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
       />
 
-      {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}
-      {note && <p className="text-sm text-[var(--color-text-muted)]">{note}</p>}
+      {(error ?? decision.error) && (
+        <p className="text-sm text-[var(--color-accent)]">{error ?? decision.error}</p>
+      )}
+      {decision.emailNote}
 
       {loading ? (
         <p className="text-sm text-[var(--color-text-muted)]">Loading members…</p>
@@ -310,14 +217,14 @@ export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
               ) : null
             }
             actions={(member) => {
-              const busy = busyId === member.id
+              const busy = decision.busyId === member.id
               const canRevoke = status === 'approved' && role === 'super_admin'
               return (
                 <>
                   {status !== 'approved' && (
                     <button
                       type="button"
-                      onClick={() => approve(member)}
+                      onClick={() => decision.approve(member)}
                       disabled={busy}
                       className="rounded-lg bg-[var(--color-accent)] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
                     >
@@ -327,7 +234,7 @@ export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
                   {status !== 'approved' && (
                     <button
                       type="button"
-                      onClick={() => requestInfo(member)}
+                      onClick={() => decision.requestInfo(member)}
                       disabled={busy}
                       className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm whitespace-nowrap hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
                     >
@@ -337,7 +244,7 @@ export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
                   {status !== 'rejected' && (status !== 'approved' || canRevoke) && (
                     <button
                       type="button"
-                      onClick={() => reject(member)}
+                      onClick={() => decision.reject(member)}
                       disabled={busy}
                       className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm whitespace-nowrap hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
                     >
@@ -345,7 +252,7 @@ export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
                     </button>
                   )}
                   <Link
-                    to={`/members/${member.id}`}
+                    to={`/admin/members/${member.id}`}
                     className="text-sm whitespace-nowrap text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
                   >
                     View
@@ -368,19 +275,7 @@ export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
         </>
       )}
 
-      <ConfirmDialog
-        open={action !== null}
-        title={action?.title ?? ''}
-        description={action?.description}
-        prompt={action?.prompt}
-        confirmLabel={action?.confirmLabel ?? 'Confirm'}
-        confirmAccent={action?.confirmAccent}
-        busy={busyId !== null}
-        onConfirm={(value) => {
-          if (action) runAction(action, value)
-        }}
-        onCancel={() => setAction(null)}
-      />
+      {decision.dialog}
     </div>
   )
 }

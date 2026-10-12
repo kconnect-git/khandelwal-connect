@@ -163,9 +163,9 @@ const EXPLORE_TAB: Tab = { to: '/explore', label: 'Explore', icon: ExploreIcon }
 const MOBILE_TABS: Tab[] = [TABS[0], TABS[1], EXPLORE_TAB, TABS[4]]
 
 // (5a) Admins get a sixth tab after Profile rather than an item in the
-// account menu. It lands on Approvals (member + event queues); every
-// /admin/* path lights this one tab.
-const ADMIN_TAB: Tab = { to: '/admin/approvals', label: 'Admin', icon: AdminIcon }
+// account menu. (5b-1) It lands on the console's Overview; every /admin/*
+// path lights this one tab.
+const ADMIN_TAB: Tab = { to: '/admin', label: 'Admin', icon: AdminIcon }
 
 function tabsFor(isAdmin: boolean, tabs: Tab[] = TABS): Tab[] {
   return isAdmin ? [...tabs, ADMIN_TAB] : tabs

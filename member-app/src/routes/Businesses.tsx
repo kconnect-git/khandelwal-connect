@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
+import { ChipSelect } from '../components/ChipSelect'
 import {
   businessMetaLine,
   getBusinessFilterOptions,
@@ -18,39 +19,6 @@ type Filters = {
 }
 
 const EMPTY_FILTERS: Filters = { category: '', city: '', state: '' }
-
-function ChipSelect({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  options: string[]
-}) {
-  const active = value !== ''
-  return (
-    <select
-      aria-label={label}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={`rounded-full border px-3 py-1.5 text-sm outline-none transition-colors ${
-        active
-          ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-white'
-          : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
-      }`}
-    >
-      <option value="">{label}</option>
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
-  )
-}
 
 export function Businesses() {
   const [search, setSearch] = useState('')

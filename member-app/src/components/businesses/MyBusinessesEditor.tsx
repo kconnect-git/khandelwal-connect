@@ -94,6 +94,19 @@ function BusinessEditor({ business, authUserId, onChanged, onRemoved }: EditorPr
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-[var(--color-border)] p-4">
+      {/* (0021) Only the owner can still see a hidden listing -- tell them
+          why, since it has silently vanished for everyone else. Editing it
+          doesn't unhide it; an admin does. */}
+      {business.is_hidden && (
+        <div className="rounded-lg border border-[var(--color-accent)] px-3 py-2 text-sm">
+          <p className="font-medium text-[var(--color-accent)]">
+            Hidden from the businesses directory by an admin
+          </p>
+          {business.hidden_reason && (
+            <p className="mt-1 whitespace-pre-line">{business.hidden_reason}</p>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <Avatar name={business.name} photoUrl={business.logo_url} size={48} />
@@ -125,12 +138,14 @@ function BusinessEditor({ business, authUserId, onChanged, onRemoved }: EditorPr
             onChange={(e) => handleLogoSelected(e.target.files?.[0])}
           />
         </div>
-        <Link
-          to={`/businesses/${business.id}`}
-          className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors shrink-0"
-        >
-          View
-        </Link>
+        {!business.is_hidden && (
+          <Link
+            to={`/businesses/${business.id}`}
+            className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors shrink-0"
+          >
+            View
+          </Link>
+        )}
       </div>
 
       <BusinessForm

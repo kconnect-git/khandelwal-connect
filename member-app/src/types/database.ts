@@ -148,8 +148,131 @@ export type BusinessRow = {
   instagram_url: string | null
   linkedin_url: string | null
   youtube_url: string | null
+  // (0021) Admin moderation. Read-only from the client (trigger-protected);
+  // the owner still sees a hidden listing, other members don't.
+  is_hidden: boolean
+  hidden_reason: string | null
+  hidden_by: string | null
+  hidden_at: string | null
   created_at: string
   updated_at: string
+}
+
+// ================================================================
+// Phase 5b-1 (0020): admin console
+// ================================================================
+
+/** One row of the console's members table (admin_search_members). */
+export type AdminSearchMemberRow = AdminMemberRow & { occupation_type: string | null }
+
+/** Filters shared by admin_search_members and admin_export_members. */
+export type AdminMemberFilters = {
+  status?: MemberStatus | null
+  search?: string
+  state?: string | null
+  city?: string | null
+  gotra?: string | null
+  occupation?: string | null
+}
+
+/** One CSV row (admin_export_members). */
+export type AdminMemberExportRow = {
+  member_code: string | null
+  member_status: MemberStatus
+  first_name: string | null
+  middle_name: string | null
+  last_name: string | null
+  full_name: string
+  gender: string | null
+  dob: string | null
+  email: string | null
+  mobile_number: string | null
+  gotra: string | null
+  native_place: string | null
+  current_city: string | null
+  current_district: string | null
+  current_state: string | null
+  occupation_type: string | null
+  job_title: string | null
+  company_name: string | null
+  marital_status: string | null
+  education: string | null
+  submitted_at: string | null
+  reviewed_at: string | null
+  created_at: string
+}
+
+/** admin_get_member: the whole people row plus what the detail screen joins
+ *  in. Typed as Person, but the jsonb also carries the frozen pre-3b
+ *  relation columns -- nothing should read those. */
+export type AdminMemberDetail = Person & {
+  email: string | null
+  reviewed_by_name: string | null
+  family_relations: FamilyRelationRow[]
+  children: ChildRow[]
+  businesses: BusinessRow[]
+}
+
+export type AuditLogRow = {
+  id: string
+  created_at: string
+  action: string
+  target_type: string | null
+  target_id: string | null
+  /** Person name / event title / business name, or null if since deleted. */
+  target_label: string | null
+  notes: string | null
+  admin_person_id: string | null
+  admin_name: string | null
+  total_count: number
+}
+
+export type AdminOverviewStats = {
+  members_by_status: Partial<Record<MemberStatus, number>>
+  signups_7d: number
+  signups_30d: number
+  events_pending: number
+  events_upcoming: number
+  businesses: number
+  /** (0021) */
+  businesses_hidden: number
+}
+
+// ================================================================
+// Phase 5b-2 (0021): moderation + admin management
+// ================================================================
+
+/** One row of the console's business list (admin_list_businesses). */
+export type AdminBusinessRow = {
+  id: string
+  name: string
+  brand_name: string | null
+  category: string | null
+  city: string | null
+  state: string | null
+  logo_url: string | null
+  is_hidden: boolean
+  hidden_reason: string | null
+  hidden_at: string | null
+  owner_id: string
+  owner_name: string
+  owner_member_code: string | null
+  owner_status: MemberStatus
+  created_at: string
+  total_count: number
+}
+
+/** One row of admin_list_admins. The person columns are null for an admin
+ *  seeded by hand without a member profile. */
+export type AdminListRow = {
+  auth_user_id: string
+  role: AdminRoleName
+  created_at: string
+  person_id: string | null
+  full_name: string | null
+  member_code: string | null
+  profile_photo_url: string | null
+  email: string | null
 }
 
 // Phase 4 (0018). Nothing in the app writes these tables directly -- every
@@ -323,6 +446,83 @@ export type Database = {
           p_status: string
           p_message?: string | null
         }
+        Returns: void
+      }
+      // (0020) admin console
+      admin_search_members: {
+        Args: {
+          p_status?: string | null
+          p_search?: string | null
+          p_state?: string | null
+          p_city?: string | null
+          p_gotra?: string | null
+          p_occupation?: string | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: AdminSearchMemberRow[]
+      }
+      admin_member_filter_options: {
+        Args: Record<PropertyKey, never>
+        Returns: { kind: string; value: string }[]
+      }
+      admin_export_members: {
+        Args: {
+          p_status?: string | null
+          p_search?: string | null
+          p_state?: string | null
+          p_city?: string | null
+          p_gotra?: string | null
+          p_occupation?: string | null
+        }
+        Returns: AdminMemberExportRow[]
+      }
+      admin_get_member: {
+        Args: { p_person_id: string }
+        Returns: AdminMemberDetail | null
+      }
+      admin_list_audit_log: {
+        Args: {
+          p_target_id?: string | null
+          p_action_prefix?: string | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: AuditLogRow[]
+      }
+      admin_overview_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: AdminOverviewStats | null
+      }
+      // (0021) moderation + admin management
+      admin_list_businesses: {
+        Args: {
+          p_hidden?: boolean | null
+          p_search?: string | null
+          p_category?: string | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: AdminBusinessRow[]
+      }
+      admin_set_business_hidden: {
+        Args: { p_business_id: string; p_hidden: boolean; p_reason?: string | null }
+        Returns: void
+      }
+      admin_list_admins: {
+        Args: Record<PropertyKey, never>
+        Returns: AdminListRow[]
+      }
+      admin_grant: {
+        Args: { p_person_id: string; p_role: string }
+        Returns: void
+      }
+      admin_set_role: {
+        Args: { p_auth_user_id: string; p_role: string }
+        Returns: void
+      }
+      admin_revoke: {
+        Args: { p_auth_user_id: string }
         Returns: void
       }
       complete_onboarding_step3: {
@@ -576,6 +776,7 @@ export type Database = {
       admin_list_events: {
         Args: {
           p_status?: string
+          p_search?: string | null
           p_limit?: number
           p_offset?: number
         }

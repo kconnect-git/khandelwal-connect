@@ -54,8 +54,9 @@ create policy "own family relations delete" on family_relations for delete
 -- The owner clause matters: getMyBusinesses() in lib/businesses.ts selects
 -- this table directly, so without it a member awaiting approval would lose
 -- their own Profile > Business tab.
+-- (0021) A listing an admin has hidden is readable by its owner only.
 create policy "members read businesses" on businesses for select
-  using (is_approved_member()
+  using ((is_approved_member() and not is_hidden)
          or owner_id in (select id from people where auth_user_id = auth.uid()));
 
 create policy "own business insert" on businesses for insert

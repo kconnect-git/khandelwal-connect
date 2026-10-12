@@ -6,7 +6,7 @@ This document captures all product, design, and technical decisions made during 
 
 ## 0. Current status (read this first)
 
-**Phases 0, 1, 2, 3a, 3b, 3c, 4, and 5a are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, **`phase-3c-summary.md`**, **`phase-4-summary.md`**, and **`phase-5a-summary.md`** before starting Phase 5b. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
+**Phases 0, 1, 2, 3a, 3b, 3c, 4, 5a, 5b-1 and 5b-2 are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, **`phase-3c-summary.md`**, **`phase-4-summary.md`**, **`phase-5a-summary.md`**, **`phase-5b1-summary.md`**, and **`phase-5b2-summary.md`** before starting Phase 5c. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
 
 Phase 0 (backend foundation):
 - ✅ Supabase project created (region: Singapore), email auth + Resend SMTP, OTP email template edited to show the 6-digit code
@@ -69,7 +69,22 @@ Phase 5a (member approval gate — migration `0019`; Phase 5 was split into 5a/5
 - ✅ "Hide my number" toggle (`people.hide_mobile`), the escape hatch promised in `phase-3a-summary.md`
 - ❌ Not built: admin management UI, admin member detail view, filters / CSV, audit-log viewer, resend-email. See `phase-5a-summary.md`.
 
-**Immediate next step:** read the seven phase summaries (especially `phase-5a-summary.md` §2 and §4), then build Phase 5b (the admin console shell, members table, businesses moderation, audit log, admin management).
+Phase 5b-1 (admin console shell + members — migration `0020`; 5b was split into 5b-1/5b-2 during planning):
+- ✅ `/admin/*` console: `AdminLayout` (the one admin gate + section nav: Overview · Approvals · Members), `AdminContext` (one `admin_role()` call per user replaces per-page `is_admin()` checks; `useIsAdmin` deleted). The Admin nav tab lands on `/admin`
+- ✅ Overview — counters (`admin_overview_stats`) + recent activity, the first reader of `admin_audit_log` (`admin_list_audit_log`)
+- ✅ Members table (`/admin/members`) — status / state / city / gotra / occupation filters in the URL, search incl. login email, pages of 25. **Export CSV** for super_admins only, every export audited as `members_export`
+- ✅ Member detail (`/admin/members/:id`, `admin_get_member`) — the full row, family, businesses, decision buttons, **Resend status email**, and the member's audit history. The queue's "View" now opens it; a failed status email gets a Retry
+- ✅ Fix: an admin who isn't an approved member can now reach `/admin/*` and see the event queue
+
+Phase 5b-2 (moderation + admin management — migration `0021`):
+- ✅ Businesses moderation (`/admin/businesses`) — Visible / Hidden tabs, Hide with a required reason / Unhide, audited. A hidden listing drops out of every member-facing read; its owner sees a banner with the reason on Profile → Business. `businesses_protect_moderation_columns` trigger stops an owner un-hiding themselves
+- ✅ Events queue rebuilt: Pending · Approved · Rejected · Cancelled tabs, search, Load more (`admin_list_events` gained `p_search`)
+- ✅ Audit log page (`/admin/audit`) filtered by action family
+- ✅ Admins page (`/admin/admins`) — any admin sees the list; super_admins add (from approved members), change role, remove. Never on yourself; never zero super_admins
+- ✅ Fixes: `assign_member_code_for` was callable by any signed-in user (Supabase default grants); 0020's audit prefix filter matched `members_export` under "Members"
+- See `phase-5b2-summary.md`.
+
+**Immediate next step:** apply `0020` then `0021` and smoke-test (`phase-5b1-summary.md` §6, `phase-5b2-summary.md` §5), then build Phase 5c (in-app notices with audience targeting).
 
 ---
 
@@ -281,7 +296,8 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 
 ### Phase 5 — Admin console (Weeks 7–8) — split into 5a (done) / 5b / 5c
 - [x] **5a: the approval gate** — `member_status`, `/pending`, `/admin/members`, `admins.role`, status emails, "Hide my number". **Exit criterion met**: an admin approves a new member end to end and the member sees the change. Full details in `phase-5a-summary.md`
-- [ ] **5b: the console** — `/admin/*` shell + `AdminContext`, overview dashboard, members table with filters + CSV export, member detail view, businesses moderation (`is_hidden`), events queue rewritten onto the shell, audit-log viewer, admin management
+- [x] **5b-1: the console shell** — `/admin/*` shell + `AdminContext`, overview dashboard, members table with filters + super_admin CSV export, member detail view with resend-email, non-member-admin fix. Full details in `phase-5b1-summary.md`
+- [x] **5b-2: moderation** — businesses moderation (`is_hidden` + owner banner), events queue rewritten onto the member-queue shape, audit-log page, admin management (super_admin; pick an approved member; last-super_admin guard). Full details in `phase-5b2-summary.md`
 - [ ] **5c: notices** — in-app only: `notices` + `notice_reads`, audience targeting by state / city / gotra / occupation, composer with a live "will reach N members" count, dashboard strip + header bell
 - Admin auth/role check (separate from member auth)
 - Overview dashboard (counters, activity log)
