@@ -133,6 +133,15 @@ export function Businesses() {
 
   return (
     <div className="flex-1 flex flex-col gap-5 px-5 py-8 max-w-2xl mx-auto w-full">
+      {/* Mobile reaches this page through the Explore tab, so lead back there.
+          Desktop has Businesses/Events in its header and no Explore page. */}
+      <Link
+        to="/explore"
+        className="sm:hidden text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+      >
+        ‹ Explore
+      </Link>
+
       <div className="flex items-end justify-between">
         <h1 className="font-heading text-2xl font-semibold">Businesses</h1>
         {total !== null && (

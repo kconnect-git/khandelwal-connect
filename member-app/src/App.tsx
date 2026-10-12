@@ -19,6 +19,7 @@ import { MemberProfile } from './routes/MemberProfile'
 import { Businesses } from './routes/Businesses'
 import { BusinessDetail } from './routes/BusinessDetail'
 import { Events } from './routes/Events'
+import { Explore } from './routes/Explore'
 import { MyEvents } from './routes/MyEvents'
 import { EventNew } from './routes/EventNew'
 import { EventDetail } from './routes/EventDetail'
@@ -156,6 +157,14 @@ export default function App() {
                 element={
                   <AuthGate key="member-profile" requireComplete>
                     <MemberProfile />
+                  </AuthGate>
+                }
+              />
+              <Route
+                path="/explore"
+                element={
+                  <AuthGate key="explore" requireComplete>
+                    <Explore />
                   </AuthGate>
                 }
               />

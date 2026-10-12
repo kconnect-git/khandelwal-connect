@@ -66,7 +66,7 @@ function ProfileIcon({ size }: { size: number }) {
   )
 }
 
-function BusinessIcon({ size }: { size: number }) {
+export function BusinessIcon({ size }: { size: number }) {
   return (
     <svg
       width={size}
@@ -86,7 +86,7 @@ function BusinessIcon({ size }: { size: number }) {
   )
 }
 
-function EventsIcon({ size }: { size: number }) {
+export function EventsIcon({ size }: { size: number }) {
   return (
     <svg
       width={size}
@@ -103,6 +103,27 @@ function EventsIcon({ size }: { size: number }) {
       <line x1="16" y1="2" x2="16" y2="6" />
       <line x1="8" y1="2" x2="8" y2="6" />
       <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  )
+}
+
+function ExploreIcon({ size }: { size: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
     </svg>
   )
 }
@@ -134,13 +155,20 @@ const TABS: Tab[] = [
   { to: '/profile', label: 'Profile', icon: ProfileIcon },
 ]
 
+// The bottom bar folds Businesses and Events (and the coming-soon sections)
+// into one Explore tab -- six tabs was too crowded at phone width. The
+// desktop header has the room, so it keeps the full list above.
+const EXPLORE_TAB: Tab = { to: '/explore', label: 'Explore', icon: ExploreIcon }
+
+const MOBILE_TABS: Tab[] = [TABS[0], TABS[1], EXPLORE_TAB, TABS[4]]
+
 // (5a) Admins get a sixth tab after Profile rather than an item in the
 // account menu. It lands on Approvals (member + event queues); every
 // /admin/* path lights this one tab.
 const ADMIN_TAB: Tab = { to: '/admin/approvals', label: 'Admin', icon: AdminIcon }
 
-function tabsFor(isAdmin: boolean): Tab[] {
-  return isAdmin ? [...TABS, ADMIN_TAB] : TABS
+function tabsFor(isAdmin: boolean, tabs: Tab[] = TABS): Tab[] {
+  return isAdmin ? [...tabs, ADMIN_TAB] : tabs
 }
 
 function isActive(pathname: string, to: string): boolean {
@@ -150,6 +178,10 @@ function isActive(pathname: string, to: string): boolean {
   if (to === '/directory') return pathname.startsWith('/directory') || pathname.startsWith('/members')
   // Every /admin/* page belongs to the one Admin tab.
   if (to === ADMIN_TAB.to) return pathname.startsWith('/admin')
+  // Explore stays lit inside the sections it leads to.
+  if (to === EXPLORE_TAB.to) {
+    return ['/explore', '/businesses', '/events'].some((p) => pathname.startsWith(p))
+  }
   return pathname.startsWith(to)
 }
 
@@ -183,11 +215,7 @@ export function HeaderNav({ isAdmin = false }: { isAdmin?: boolean }) {
 /** Fixed bottom tab bar for mobile (hidden on sm+). */
 export function BottomTabs({ isAdmin = false }: { isAdmin?: boolean }) {
   const { pathname } = useLocation()
-  const tabs = tabsFor(isAdmin)
-  // Five tabs at 11px was already the width ceiling at 360px (Phase 4). The
-  // admin's sixth needs one more notch down so "Businesses" still fits in
-  // its sixth of the bar; everyone else keeps the tuned 11px.
-  const labelSize = tabs.length > 5 ? 'text-[10px]' : 'text-[11px]'
+  const tabs = tabsFor(isAdmin, MOBILE_TABS)
 
   return (
     <nav
@@ -204,7 +232,7 @@ export function BottomTabs({ isAdmin = false }: { isAdmin?: boolean }) {
             // min-w-0 + overflow-hidden matter here: a flex item defaults to
             // min-width:auto, so a label wider than its share would widen the
             // whole bar past the viewport instead of clipping.
-            className={`flex-1 min-w-0 overflow-hidden flex flex-col items-center gap-0.5 py-2 ${labelSize} whitespace-nowrap transition-colors ${
+            className={`flex-1 min-w-0 overflow-hidden flex flex-col items-center gap-0.5 py-2 text-[11px] whitespace-nowrap transition-colors ${
               active
                 ? 'text-[var(--color-accent)]'
                 : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'

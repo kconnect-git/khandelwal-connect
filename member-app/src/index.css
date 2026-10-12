@@ -12,6 +12,16 @@
   --color-text-muted: #a8a6ad;
   --color-accent: #ff4d2e;
   --color-accent-hover: #ff6a4d;
+
+  /* Explore tiles: warm/cool icon chips and Live/Soon badges. */
+  --color-chip-warm-bg: rgba(255, 77, 46, 0.18);
+  --color-chip-warm-fg: #ff7a5c;
+  --color-chip-cool-bg: rgba(59, 130, 246, 0.18);
+  --color-chip-cool-fg: #7fb0f5;
+  --color-badge-live-bg: rgba(34, 197, 94, 0.15);
+  --color-badge-live-fg: #4ade80;
+  --color-badge-soon-bg: rgba(234, 179, 8, 0.15);
+  --color-badge-soon-fg: #f5c451;
 }
 
 :root[data-theme="light"] {
@@ -23,6 +33,15 @@
   --color-text-muted: #5c5a60;
   --color-accent: #ff4d2e;
   --color-accent-hover: #e0431f;
+
+  --color-chip-warm-bg: rgba(255, 77, 46, 0.12);
+  --color-chip-warm-fg: #d93d1f;
+  --color-chip-cool-bg: rgba(59, 130, 246, 0.12);
+  --color-chip-cool-fg: #2563eb;
+  --color-badge-live-bg: rgba(34, 197, 94, 0.14);
+  --color-badge-live-fg: #15803d;
+  --color-badge-soon-bg: rgba(234, 179, 8, 0.18);
+  --color-badge-soon-fg: #a16207;
 }
 
 html {
