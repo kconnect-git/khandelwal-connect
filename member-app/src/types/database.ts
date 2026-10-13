@@ -236,6 +236,57 @@ export type AdminOverviewStats = {
   businesses: number
   /** (0021) */
   businesses_hidden: number
+  /** (0022) published and not expired */
+  notices_active: number
+}
+
+// ================================================================
+// Phase 5c (0022): notices
+// ================================================================
+
+export type NoticeStatus = 'draft' | 'published' | 'withdrawn'
+
+/** OR within a list, AND across lists; an empty list = no restriction. */
+export type NoticeAudience = {
+  states: string[]
+  cities: string[]
+  gotras: string[]
+  occupations: string[]
+}
+
+/** One row of list_my_notices. */
+export type MemberNoticeRow = {
+  id: string
+  title: string
+  body: string
+  published_at: string
+  expires_at: string | null
+  is_active: boolean
+  is_read: boolean
+  total_count: number
+}
+
+/** One row of admin_list_notices. */
+export type AdminNoticeRow = {
+  id: string
+  title: string
+  body: string
+  audience_states: string[]
+  audience_cities: string[]
+  audience_gotras: string[]
+  audience_occupations: string[]
+  status: NoticeStatus
+  expires_at: string | null
+  published_at: string | null
+  withdrawn_at: string | null
+  created_at: string
+  updated_at: string
+  created_by_name: string | null
+  published_by_name: string | null
+  /** Approved members the audience matches right now. */
+  reach_count: number
+  read_count: number
+  total_count: number
 }
 
 // ================================================================
@@ -523,6 +574,58 @@ export type Database = {
       }
       admin_revoke: {
         Args: { p_auth_user_id: string }
+        Returns: void
+      }
+      // (0022) notices
+      list_my_notices: {
+        Args: { p_active_only?: boolean; p_limit?: number; p_offset?: number }
+        Returns: MemberNoticeRow[]
+      }
+      notice_unread_count: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      mark_notices_read: {
+        Args: { p_notice_id?: string | null }
+        Returns: void
+      }
+      admin_count_notice_audience: {
+        Args: {
+          p_states?: string[]
+          p_cities?: string[]
+          p_gotras?: string[]
+          p_occupations?: string[]
+        }
+        Returns: number
+      }
+      admin_list_notices: {
+        Args: {
+          p_status?: string | null
+          p_notice_id?: string | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: AdminNoticeRow[]
+      }
+      admin_save_notice: {
+        Args: {
+          p_notice_id: string | null
+          p_title: string
+          p_body: string
+          p_states?: string[]
+          p_cities?: string[]
+          p_gotras?: string[]
+          p_occupations?: string[]
+          p_expires_at?: string | null
+        }
+        Returns: string
+      }
+      admin_set_notice_status: {
+        Args: { p_notice_id: string; p_status: string }
+        Returns: void
+      }
+      admin_delete_notice: {
+        Args: { p_notice_id: string }
         Returns: void
       }
       complete_onboarding_step3: {

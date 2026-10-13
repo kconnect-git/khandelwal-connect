@@ -3,6 +3,8 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from
 import { ThemeProvider } from './context/ThemeContext'
 import { ProfileRefreshProvider, useProfileRefresh } from './context/ProfileRefreshContext'
 import { AdminProvider, useAdmin } from './context/AdminContext'
+import { NoticesProvider } from './context/NoticesContext'
+import { NoticeBell } from './components/NoticeBell'
 import { ThemeToggle } from './components/ThemeToggle'
 import { UserMenu } from './components/UserMenu'
 import { HeaderNav, BottomTabs } from './components/NavTabs'
@@ -24,6 +26,7 @@ import { Explore } from './routes/Explore'
 import { MyEvents } from './routes/MyEvents'
 import { EventNew } from './routes/EventNew'
 import { EventDetail } from './routes/EventDetail'
+import { Notices } from './routes/Notices'
 import { AdminLayout } from './routes/admin/AdminLayout'
 import { AdminOverview } from './routes/admin/AdminOverview'
 import { AdminApprovals } from './routes/admin/AdminApprovals'
@@ -32,6 +35,8 @@ import { AdminMemberDetail } from './routes/admin/AdminMemberDetail'
 import { AdminBusinesses } from './routes/admin/AdminBusinesses'
 import { AdminAudit } from './routes/admin/AdminAudit'
 import { AdminAdmins } from './routes/admin/AdminAdmins'
+import { AdminNotices } from './routes/admin/AdminNotices'
+import { AdminNoticeEditor } from './routes/admin/AdminNoticeEditor'
 import { PendingApproval } from './routes/PendingApproval'
 import { clearReturnTo } from './lib/returnTo'
 
@@ -75,6 +80,8 @@ function Layout({ children }: { children: React.ReactNode }) {
           {showNav && <HeaderNav isAdmin={isAdmin} />}
         </div>
         <div className="flex items-center gap-3">
+          {/* (5c) Approved members only -- same rule as the nav. */}
+          {showNav && <NoticeBell />}
           <ThemeToggle />
           {person && (
             <UserMenu
@@ -102,160 +109,173 @@ export default function App() {
       <BrowserRouter>
         <ProfileRefreshProvider>
           <AdminProvider>
-            <Layout>
-              <Routes>
-                <Route path="/" element={<RootRedirect />} />
-                <Route path="/signup" element={<Signup />} />
-                <Route path="/verify" element={<VerifyOtp />} />
-                <Route
-                  path="/onboarding"
-                  element={
-                    <AuthGate key="onboarding">
-                      <ProfileWizard />
-                    </AuthGate>
-                  }
-                />
-                <Route
-                  path="/dashboard"
-                  element={
-                    <AuthGate key="dashboard" requireComplete>
-                      <Dashboard />
-                    </AuthGate>
-                  }
-                />
-                {/* (0019) The holding screen between finishing the wizard and
-                    being approved. /profile stays reachable for the same group
-                    -- acting on a "more information needed" note means editing
-                    it -- but nothing else does. */}
-                <Route
-                  path="/pending"
-                  element={
-                    <AuthGate key="pending" requireComplete allowPending>
-                      <PendingApproval />
-                    </AuthGate>
-                  }
-                />
-                <Route
-                  path="/profile"
-                  element={
-                    <AuthGate key="profile" requireComplete allowPending>
-                      <Profile />
-                    </AuthGate>
-                  }
-                />
-                {/* Phase 3c: Edit profile, Family details and My businesses all
-                    folded into the tabbed Profile page. Old paths keep working
-                    for bookmarks / stale links. */}
-                <Route path="/profile/edit" element={<Navigate to="/profile" replace />} />
-                <Route path="/family-details" element={<Navigate to="/profile" replace />} />
-                <Route
-                  path="/businesses/mine"
-                  element={<Navigate to="/profile?tab=business" replace />}
-                />
-                <Route
-                  path="/directory"
-                  element={
-                    <AuthGate key="directory" requireComplete>
-                      <Directory />
-                    </AuthGate>
-                  }
-                />
-                <Route
-                  path="/members/:id"
-                  element={
-                    <AuthGate key="member-profile" requireComplete>
-                      <MemberProfile />
-                    </AuthGate>
-                  }
-                />
-                <Route
-                  path="/explore"
-                  element={
-                    <AuthGate key="explore" requireComplete>
-                      <Explore />
-                    </AuthGate>
-                  }
-                />
-                <Route
-                  path="/businesses"
-                  element={
-                    <AuthGate key="businesses" requireComplete>
-                      <Businesses />
-                    </AuthGate>
-                  }
-                />
-                <Route
-                  path="/businesses/:id"
-                  element={
-                    <AuthGate key="business-detail" requireComplete>
-                      <BusinessDetail />
-                    </AuthGate>
-                  }
-                />
-                {/* Phase 4: events. /events/mine and /events/new sit before
-                    /events/:id so they aren't swallowed by the param route. */}
-                <Route
-                  path="/events"
-                  element={
-                    <AuthGate key="events" requireComplete>
-                      <Events />
-                    </AuthGate>
-                  }
-                />
-                <Route
-                  path="/events/mine"
-                  element={
-                    <AuthGate key="my-events" requireComplete>
-                      <MyEvents />
-                    </AuthGate>
-                  }
-                />
-                <Route
-                  path="/events/new"
-                  element={
-                    <AuthGate key="event-new" requireComplete>
-                      <EventNew />
-                    </AuthGate>
-                  }
-                />
-                <Route
-                  path="/events/:id"
-                  element={
-                    <AuthGate key="event-detail" requireComplete>
-                      <EventDetail />
-                    </AuthGate>
-                  }
-                />
-                {/* (5b-1) The admin console. AdminLayout does the admin gate
-                    and renders the section nav around each page. allowPending:
-                    an admin who is themselves still pending (or seeded by hand
-                    before onboarding) must not be bounced to /pending -- the
-                    is_admin() check is what governs these pages, not
-                    membership. /admin/events is a Phase 4 path kept as a
-                    redirect; /admin/members was one in 5a and is now the
-                    members table. */}
-                <Route
-                  path="/admin"
-                  element={
-                    <AuthGate key="admin" requireComplete allowPending>
-                      <AdminLayout />
-                    </AuthGate>
-                  }
-                >
-                  <Route index element={<AdminOverview />} />
-                  <Route path="approvals" element={<AdminApprovals />} />
-                  <Route path="members" element={<AdminMembers />} />
-                  <Route path="members/:id" element={<AdminMemberDetail />} />
-                  <Route path="businesses" element={<AdminBusinesses />} />
-                  <Route path="audit" element={<AdminAudit />} />
-                  <Route path="admins" element={<AdminAdmins />} />
+            <NoticesProvider>
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<RootRedirect />} />
+                  <Route path="/signup" element={<Signup />} />
+                  <Route path="/verify" element={<VerifyOtp />} />
                   <Route
-                    path="events"
-                    element={<Navigate to="/admin/approvals?tab=events" replace />}
+                    path="/onboarding"
+                    element={
+                      <AuthGate key="onboarding">
+                        <ProfileWizard />
+                      </AuthGate>
+                    }
                   />
-                </Route>
-              </Routes>
-            </Layout>
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <AuthGate key="dashboard" requireComplete>
+                        <Dashboard />
+                      </AuthGate>
+                    }
+                  />
+                  {/* (0019) The holding screen between finishing the wizard and
+                      being approved. /profile stays reachable for the same group
+                      -- acting on a "more information needed" note means editing
+                      it -- but nothing else does. */}
+                  <Route
+                    path="/pending"
+                    element={
+                      <AuthGate key="pending" requireComplete allowPending>
+                        <PendingApproval />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/profile"
+                    element={
+                      <AuthGate key="profile" requireComplete allowPending>
+                        <Profile />
+                      </AuthGate>
+                    }
+                  />
+                  {/* Phase 3c: Edit profile, Family details and My businesses all
+                      folded into the tabbed Profile page. Old paths keep working
+                      for bookmarks / stale links. */}
+                  <Route path="/profile/edit" element={<Navigate to="/profile" replace />} />
+                  <Route path="/family-details" element={<Navigate to="/profile" replace />} />
+                  <Route
+                    path="/businesses/mine"
+                    element={<Navigate to="/profile?tab=business" replace />}
+                  />
+                  <Route
+                    path="/directory"
+                    element={
+                      <AuthGate key="directory" requireComplete>
+                        <Directory />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/members/:id"
+                    element={
+                      <AuthGate key="member-profile" requireComplete>
+                        <MemberProfile />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/notices"
+                    element={
+                      <AuthGate key="notices" requireComplete>
+                        <Notices />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/explore"
+                    element={
+                      <AuthGate key="explore" requireComplete>
+                        <Explore />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/businesses"
+                    element={
+                      <AuthGate key="businesses" requireComplete>
+                        <Businesses />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/businesses/:id"
+                    element={
+                      <AuthGate key="business-detail" requireComplete>
+                        <BusinessDetail />
+                      </AuthGate>
+                    }
+                  />
+                  {/* Phase 4: events. /events/mine and /events/new sit before
+                      /events/:id so they aren't swallowed by the param route. */}
+                  <Route
+                    path="/events"
+                    element={
+                      <AuthGate key="events" requireComplete>
+                        <Events />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/events/mine"
+                    element={
+                      <AuthGate key="my-events" requireComplete>
+                        <MyEvents />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/events/new"
+                    element={
+                      <AuthGate key="event-new" requireComplete>
+                        <EventNew />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/events/:id"
+                    element={
+                      <AuthGate key="event-detail" requireComplete>
+                        <EventDetail />
+                      </AuthGate>
+                    }
+                  />
+                  {/* (5b-1) The admin console. AdminLayout does the admin gate
+                      and renders the section nav around each page. allowPending:
+                      an admin who is themselves still pending (or seeded by hand
+                      before onboarding) must not be bounced to /pending -- the
+                      is_admin() check is what governs these pages, not
+                      membership. /admin/events is a Phase 4 path kept as a
+                      redirect; /admin/members was one in 5a and is now the
+                      members table. */}
+                  <Route
+                    path="/admin"
+                    element={
+                      <AuthGate key="admin" requireComplete allowPending>
+                        <AdminLayout />
+                      </AuthGate>
+                    }
+                  >
+                    <Route index element={<AdminOverview />} />
+                    <Route path="approvals" element={<AdminApprovals />} />
+                    <Route path="members" element={<AdminMembers />} />
+                    <Route path="members/:id" element={<AdminMemberDetail />} />
+                    <Route path="businesses" element={<AdminBusinesses />} />
+                    <Route path="notices" element={<AdminNotices />} />
+                    <Route path="notices/new" element={<AdminNoticeEditor key="new" />} />
+                    <Route path="notices/:id" element={<AdminNoticeEditor />} />
+                    <Route path="audit" element={<AdminAudit />} />
+                    <Route path="admins" element={<AdminAdmins />} />
+                    <Route
+                      path="events"
+                      element={<Navigate to="/admin/approvals?tab=events" replace />}
+                    />
+                  </Route>
+                </Routes>
+              </Layout>
+            </NoticesProvider>
           </AdminProvider>
         </ProfileRefreshProvider>
       </BrowserRouter>

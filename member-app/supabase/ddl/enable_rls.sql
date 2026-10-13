@@ -93,4 +93,10 @@ create policy "own invites read" on event_invites for select
 
 -- admins: no policies at all (only is_admin() reads it).
 
+-- Phase 5c (0022): notices / notice_reads. RPC-only, like events -- no
+-- policies at all; members read through list_my_notices /
+-- notice_unread_count and write only through mark_notices_read.
+alter table notices enable row level security;
+alter table notice_reads enable row level security;
+
 -- everything else stays fully closed until you write real policies for it

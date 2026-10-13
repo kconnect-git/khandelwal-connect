@@ -8,6 +8,7 @@ import { listBusinesses } from '../lib/businesses'
 import { listEvents } from '../lib/events'
 import { getFamilyNameCompletionFlags } from '../lib/familyDetails'
 import { clearReturnTo } from '../lib/returnTo'
+import { NoticeStrip } from '../components/NoticeStrip'
 import type { Person } from '../types/database'
 
 export function Dashboard() {
@@ -79,6 +80,9 @@ export function Dashboard() {
           {person?.full_name ?? ''}
         </h1>
       </div>
+
+      {/* (5c) Unread notices, above everything else on the page. */}
+      <NoticeStrip />
 
       {person?.member_code && (
         <div className="w-full rounded-xl bg-[var(--color-accent)] text-white px-4 py-4 flex items-end justify-between gap-4">

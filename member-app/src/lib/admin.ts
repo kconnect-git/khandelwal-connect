@@ -223,6 +223,9 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   admin_granted: 'Made admin',
   admin_role_changed: 'Changed admin role',
   admin_revoked: 'Removed admin',
+  notice_published: 'Published notice',
+  notice_edited: 'Edited published notice',
+  notice_withdrawn: 'Withdrew notice',
 }
 
 export function auditActionLabel(action: string): string {
@@ -237,6 +240,7 @@ export function auditTargetHref(row: Pick<AuditLogRow, 'target_type' | 'target_i
   // Hidden listings 404 on the member-facing page, so audit rows point at
   // the console's list instead.
   if (row.target_type === 'business') return '/admin/businesses'
+  if (row.target_type === 'notice') return `/admin/notices/${row.target_id}`
   return null
 }
 

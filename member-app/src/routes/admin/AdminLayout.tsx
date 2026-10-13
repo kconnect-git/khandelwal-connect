@@ -16,6 +16,7 @@ const SECTIONS: { to: string; label: string; end?: boolean }[] = [
   { to: '/admin/approvals', label: 'Approvals' },
   { to: '/admin/members', label: 'Members' },
   { to: '/admin/businesses', label: 'Businesses' },
+  { to: '/admin/notices', label: 'Notices' },
   { to: '/admin/audit', label: 'Audit log' },
   { to: '/admin/admins', label: 'Admins' },
 ]

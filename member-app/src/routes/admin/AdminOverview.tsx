@@ -37,6 +37,7 @@ function tilesFor(stats: AdminOverviewStats): Tile[] {
     { label: 'Still onboarding', value: byStatus.onboarding ?? 0, to: '/admin/members?status=onboarding' },
     { label: 'Upcoming events', value: stats.events_upcoming, to: '/events' },
     { label: 'Business listings', value: stats.businesses, to: '/admin/businesses' },
+    { label: 'Active notices', value: stats.notices_active ?? 0, to: '/admin/notices?status=published' },
     {
       label: 'Hidden listings',
       value: stats.businesses_hidden ?? 0,

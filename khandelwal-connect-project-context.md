@@ -6,7 +6,7 @@ This document captures all product, design, and technical decisions made during 
 
 ## 0. Current status (read this first)
 
-**Phases 0, 1, 2, 3a, 3b, 3c, 4, 5a, 5b-1 and 5b-2 are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, **`phase-3c-summary.md`**, **`phase-4-summary.md`**, **`phase-5a-summary.md`**, **`phase-5b1-summary.md`**, and **`phase-5b2-summary.md`** before starting Phase 5c. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
+**Phases 0 through 5 (0, 1, 2, 3a, 3b, 3c, 4, 5a, 5b-1, 5b-2, 5c) are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, **`phase-3c-summary.md`**, **`phase-4-summary.md`**, **`phase-5a-summary.md`**, **`phase-5b1-summary.md`**, **`phase-5b2-summary.md`**, and **`phase-5c-summary.md`** before starting Phase 6. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
 
 Phase 0 (backend foundation):
 - ✅ Supabase project created (region: Singapore), email auth + Resend SMTP, OTP email template edited to show the 6-digit code
@@ -84,7 +84,13 @@ Phase 5b-2 (moderation + admin management — migration `0021`):
 - ✅ Fixes: `assign_member_code_for` was callable by any signed-in user (Supabase default grants); 0020's audit prefix filter matched `members_export` under "Members"
 - See `phase-5b2-summary.md`.
 
-**Immediate next step:** apply `0020` then `0021` and smoke-test (`phase-5b1-summary.md` §6, `phase-5b2-summary.md` §5), then build Phase 5c (in-app notices with audience targeting).
+Phase 5c (in-app notices — migration `0022`):
+- ✅ `notices` + `notice_reads` (RPC-only). Draft → published → withdrawn, optional "show until" date. Audience = states / cities / gotras / occupations, OR within a list and AND across lists, empty = everyone; matched at read time
+- ✅ Members: header bell with unread badge → `/notices` (opening it marks all read), unread strip at the top of the dashboard with Dismiss
+- ✅ Admins (any role): `/admin/notices` (Drafts · Published · Withdrawn, read N / reach N) and a composer with multi-select audience chips, live "will reach N members", preview. Publish / edit-while-live / withdraw are audited
+- ❌ Not built: email or push delivery, scheduling, attachments. See `phase-5c-summary.md`.
+
+**Immediate next step:** apply `0022` and smoke-test (`phase-5c-summary.md` §5), then start Phase 6 (matrimony).
 
 ---
 
@@ -298,7 +304,7 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 - [x] **5a: the approval gate** — `member_status`, `/pending`, `/admin/members`, `admins.role`, status emails, "Hide my number". **Exit criterion met**: an admin approves a new member end to end and the member sees the change. Full details in `phase-5a-summary.md`
 - [x] **5b-1: the console shell** — `/admin/*` shell + `AdminContext`, overview dashboard, members table with filters + super_admin CSV export, member detail view with resend-email, non-member-admin fix. Full details in `phase-5b1-summary.md`
 - [x] **5b-2: moderation** — businesses moderation (`is_hidden` + owner banner), events queue rewritten onto the member-queue shape, audit-log page, admin management (super_admin; pick an approved member; last-super_admin guard). Full details in `phase-5b2-summary.md`
-- [ ] **5c: notices** — in-app only: `notices` + `notice_reads`, audience targeting by state / city / gotra / occupation, composer with a live "will reach N members" count, dashboard strip + header bell
+- [x] **5c: notices** — in-app only: `notices` + `notice_reads`, audience targeting by state / city / gotra / occupation, composer with a live "will reach N members" count, dashboard strip + header bell. Full details in `phase-5c-summary.md`
 - Admin auth/role check (separate from member auth)
 - Overview dashboard (counters, activity log)
 - Member records table (search, filters, CSV export)
