@@ -60,8 +60,8 @@ type Section = {
 
 const SECTIONS: Section[] = [
   { label: 'Business', blurb: 'Find and list community businesses', icon: BusinessIcon, tone: 'warm', to: '/businesses' },
-  { label: 'Matrimonial', blurb: 'Verified profiles, family-first privacy', icon: MatrimonyIcon, tone: 'warm', to: '/matrimony' },
   { label: 'Career', blurb: 'Jobs, mentors, and internships', icon: TrendIcon, tone: 'cool' },
+  { label: 'Matrimonial', blurb: 'Verified profiles, family-first privacy', icon: MatrimonyIcon, tone: 'warm', to: '/matrimony' },
   { label: 'Incubation club', blurb: 'Pitch ideas, meet mentors', icon: BulbIcon, tone: 'cool' },
   { label: 'Youth club', blurb: 'Meet-ups, sports, volunteering', icon: BoltIcon, tone: 'warm' },
   { label: 'Events', blurb: 'Gatherings across all chapters', icon: EventsIcon, tone: 'cool', to: '/events' },
