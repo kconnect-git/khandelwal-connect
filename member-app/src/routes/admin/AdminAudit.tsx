@@ -12,7 +12,7 @@ import type { AuditLogRow } from '../../types/database'
 
 const PAGE_SIZE = 30
 
-type Family = 'all' | 'member' | 'event' | 'business' | 'notice' | 'admin' | 'export'
+type Family = 'all' | 'member' | 'event' | 'business' | 'notice' | 'matrimony' | 'admin' | 'export'
 
 const FAMILIES: { key: Family; label: string; prefix: string | undefined }[] = [
   { key: 'all', label: 'All', prefix: undefined },
@@ -20,6 +20,7 @@ const FAMILIES: { key: Family; label: string; prefix: string | undefined }[] = [
   { key: 'event', label: 'Events', prefix: 'event_' },
   { key: 'business', label: 'Businesses', prefix: 'business_' },
   { key: 'notice', label: 'Notices', prefix: 'notice_' },
+  { key: 'matrimony', label: 'Matrimony', prefix: 'matrimony_' },
   { key: 'admin', label: 'Admins', prefix: 'admin_' },
   { key: 'export', label: 'Exports', prefix: 'members_export' },
 ]

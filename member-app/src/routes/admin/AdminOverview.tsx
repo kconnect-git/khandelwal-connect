@@ -27,6 +27,18 @@ function tilesFor(stats: AdminOverviewStats): Tile[] {
       urgent: stats.events_pending > 0,
     },
     {
+      label: 'Matrimony profiles awaiting review',
+      value: stats.matrimony_pending ?? 0,
+      to: '/admin/matrimony',
+      urgent: (stats.matrimony_pending ?? 0) > 0,
+    },
+    {
+      label: 'Open matrimony reports',
+      value: stats.matrimony_reports_open ?? 0,
+      to: '/admin/matrimony?status=reports',
+      urgent: (stats.matrimony_reports_open ?? 0) > 0,
+    },
+    {
       label: 'Waiting on member',
       value: byStatus.info_requested ?? 0,
       to: '/admin/approvals?status=info_requested',
@@ -37,6 +49,11 @@ function tilesFor(stats: AdminOverviewStats): Tile[] {
     { label: 'Still onboarding', value: byStatus.onboarding ?? 0, to: '/admin/members?status=onboarding' },
     { label: 'Upcoming events', value: stats.events_upcoming, to: '/events' },
     { label: 'Business listings', value: stats.businesses, to: '/admin/businesses' },
+    {
+      label: 'Live matrimony profiles',
+      value: stats.matrimony_approved ?? 0,
+      to: '/admin/matrimony?status=approved',
+    },
     { label: 'Active notices', value: stats.notices_active ?? 0, to: '/admin/notices?status=published' },
     {
       label: 'Hidden listings',

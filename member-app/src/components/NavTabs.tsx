@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
+import { useMatrimony } from '../context/MatrimonyContext'
 
 type Tab = {
   to: string
@@ -86,6 +87,24 @@ export function BusinessIcon({ size }: { size: number }) {
   )
 }
 
+export function MatrimonyIcon({ size }: { size: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+    </svg>
+  )
+}
+
 export function EventsIcon({ size }: { size: number }) {
   return (
     <svg
@@ -147,20 +166,29 @@ function AdminIcon({ size }: { size: number }) {
   )
 }
 
+const HOME_TAB: Tab = { to: '/dashboard', label: 'Home', icon: HomeIcon }
+const DIRECTORY_TAB: Tab = { to: '/directory', label: 'Directory', icon: DirectoryIcon }
+const PROFILE_TAB: Tab = { to: '/profile', label: 'Profile', icon: ProfileIcon }
+const MATRIMONY_TO = '/matrimony'
+
 const TABS: Tab[] = [
-  { to: '/dashboard', label: 'Home', icon: HomeIcon },
-  { to: '/directory', label: 'Directory', icon: DirectoryIcon },
+  HOME_TAB,
+  DIRECTORY_TAB,
   { to: '/businesses', label: 'Businesses', icon: BusinessIcon },
   { to: '/events', label: 'Events', icon: EventsIcon },
-  { to: '/profile', label: 'Profile', icon: ProfileIcon },
+  // (6b) Its own header link on desktop, like Businesses / Events.
+  { to: MATRIMONY_TO, label: 'Matrimony', icon: MatrimonyIcon },
+  PROFILE_TAB,
 ]
 
-// The bottom bar folds Businesses and Events (and the coming-soon sections)
-// into one Explore tab -- six tabs was too crowded at phone width. The
-// desktop header has the room, so it keeps the full list above.
+// The bottom bar folds Businesses, Events and Matrimony (and the
+// coming-soon sections) into one Explore tab -- that many tabs is too
+// crowded at phone width. The desktop header has the room, so it keeps the
+// full list above. (6b) "Desktop" starts at lg (1024px): with Matrimony the
+// header row no longer fits on a tablet, so tablets get the bottom bar.
 const EXPLORE_TAB: Tab = { to: '/explore', label: 'Explore', icon: ExploreIcon }
 
-const MOBILE_TABS: Tab[] = [TABS[0], TABS[1], EXPLORE_TAB, TABS[4]]
+const MOBILE_TABS: Tab[] = [HOME_TAB, DIRECTORY_TAB, EXPLORE_TAB, PROFILE_TAB]
 
 // (5a) Admins get a sixth tab after Profile rather than an item in the
 // account menu. (5b-1) It lands on the console's Overview; every /admin/*
@@ -180,7 +208,7 @@ function isActive(pathname: string, to: string): boolean {
   if (to === ADMIN_TAB.to) return pathname.startsWith('/admin')
   // Explore stays lit inside the sections it leads to.
   if (to === EXPLORE_TAB.to) {
-    return ['/explore', '/businesses', '/events'].some((p) => pathname.startsWith(p))
+    return ['/explore', '/businesses', '/events', MATRIMONY_TO].some((p) => pathname.startsWith(p))
   }
   return pathname.startsWith(to)
 }
@@ -188,9 +216,10 @@ function isActive(pathname: string, to: string): boolean {
 /** Inline nav links for the desktop header (hidden on mobile). */
 export function HeaderNav({ isAdmin = false }: { isAdmin?: boolean }) {
   const { pathname } = useLocation()
+  const { badgeCount } = useMatrimony()
 
   return (
-    <nav className="hidden sm:flex items-center gap-1" aria-label="Primary">
+    <nav className="hidden lg:flex items-center gap-1" aria-label="Primary">
       {tabsFor(isAdmin).map((tab) => {
         const active = isActive(pathname, tab.to)
         return (
@@ -205,6 +234,13 @@ export function HeaderNav({ isAdmin = false }: { isAdmin?: boolean }) {
             }`}
           >
             {tab.label}
+            {/* (6b) New interests / matches. On phones the Explore tile
+                carries this badge instead. */}
+            {tab.to === MATRIMONY_TO && badgeCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-[var(--color-accent)] px-1.5 py-0.5 text-xs font-semibold text-white">
+                {badgeCount > 9 ? '9+' : badgeCount}
+              </span>
+            )}
           </Link>
         )
       })}
@@ -212,7 +248,7 @@ export function HeaderNav({ isAdmin = false }: { isAdmin?: boolean }) {
   )
 }
 
-/** Fixed bottom tab bar for mobile (hidden on sm+). */
+/** Fixed bottom tab bar for mobile and tablet (hidden on lg+). */
 export function BottomTabs({ isAdmin = false }: { isAdmin?: boolean }) {
   const { pathname } = useLocation()
   const tabs = tabsFor(isAdmin, MOBILE_TABS)
@@ -220,7 +256,7 @@ export function BottomTabs({ isAdmin = false }: { isAdmin?: boolean }) {
   return (
     <nav
       aria-label="Primary"
-      className="sm:hidden fixed bottom-0 inset-x-0 z-10 flex border-t border-[var(--color-border)] bg-[var(--color-surface)] pb-[env(safe-area-inset-bottom)]"
+      className="lg:hidden fixed bottom-0 inset-x-0 z-10 flex border-t border-[var(--color-border)] bg-[var(--color-surface)] pb-[env(safe-area-inset-bottom)]"
     >
       {tabs.map((tab) => {
         const active = isActive(pathname, tab.to)

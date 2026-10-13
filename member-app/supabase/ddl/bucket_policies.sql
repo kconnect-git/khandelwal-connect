@@ -41,12 +41,24 @@ create policy "own business media delete"
   on storage.objects for delete
   using (bucket_id = 'business-media' and auth.uid()::text = (storage.foldername(name))[1]);
 
--- matrimony-photos: owner-only upload, NO general read policy yet
--- (read access depends on mutual accept in matrimony_interests —
--- write that policy when the matrimony feature is built, Phase 6)
+-- matrimony-photos: private bucket, owner-only upload
 create policy "own matrimony photo upload"
   on storage.objects for insert
   with check (bucket_id = 'matrimony-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Phase 6a (0023): the owner (their own preview) and admins (verification)
+-- read through signed URLs; owners delete a photo they remove. (0024) Mutual
+-- matches read each other's too -- matrimony_photo_visible() in core_schema.
+create policy "matrimony photo read"
+  on storage.objects for select
+  using (bucket_id = 'matrimony-photos'
+         and (auth.uid()::text = (storage.foldername(name))[1]
+              or public.is_admin()
+              or public.matrimony_photo_visible((storage.foldername(name))[1])));
+
+create policy "own matrimony photo delete"
+  on storage.objects for delete
+  using (bucket_id = 'matrimony-photos' and auth.uid()::text = (storage.foldername(name))[1]);
 
 -- kyc-documents: owner-only upload, NO read policy at all
 -- (only accessible via secret key from server-side/admin code, never the client)

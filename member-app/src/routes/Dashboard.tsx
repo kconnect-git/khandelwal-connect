@@ -9,10 +9,12 @@ import { listEvents } from '../lib/events'
 import { getFamilyNameCompletionFlags } from '../lib/familyDetails'
 import { clearReturnTo } from '../lib/returnTo'
 import { NoticeStrip } from '../components/NoticeStrip'
+import { useMatrimony } from '../context/MatrimonyContext'
 import type { Person } from '../types/database'
 
 export function Dashboard() {
   const navigate = useNavigate()
+  const { badgeCount: matrimonyCount } = useMatrimony()
   const [person, setPerson] = useState<Person | null>(null)
   const [completion, setCompletion] = useState<ProfileCompletion | null>(null)
   const [memberCount, setMemberCount] = useState<number | null>(null)
@@ -83,6 +85,27 @@ export function Dashboard() {
 
       {/* (5c) Unread notices, above everything else on the page. */}
       <NoticeStrip />
+
+      {/* (6b) Only when there's something to act on: new interests or
+          matches. Not the accent -- the membership card is this screen's
+          one vermilion element. */}
+      {matrimonyCount > 0 && (
+        <Link
+          to="/matrimony/interests"
+          className="w-full flex items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span>
+            <span className="font-medium">Matrimony</span>
+            <span className="text-[var(--color-text-muted)]">
+              {' '}
+              · {matrimonyCount} new {matrimonyCount === 1 ? 'update' : 'updates'}
+            </span>
+          </span>
+          <span aria-hidden="true" className="text-[var(--color-text-muted)]">
+            ›
+          </span>
+        </Link>
+      )}
 
       {person?.member_code && (
         <div className="w-full rounded-xl bg-[var(--color-accent)] text-white px-4 py-4 flex items-end justify-between gap-4">

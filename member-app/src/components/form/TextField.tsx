@@ -1,6 +1,6 @@
 type TextFieldProps = {
   label?: string
-  type?: 'text' | 'date' | 'datetime-local' | 'tel' | 'email'
+  type?: 'text' | 'date' | 'time' | 'datetime-local' | 'tel' | 'email'
   value: string
   onChange: (value: string) => void
   required?: boolean

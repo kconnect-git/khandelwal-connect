@@ -226,6 +226,13 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   notice_published: 'Published notice',
   notice_edited: 'Edited published notice',
   notice_withdrawn: 'Withdrew notice',
+  matrimony_approved: 'Approved matrimony profile',
+  matrimony_changes_requested: 'Asked for matrimony profile changes',
+  matrimony_rejected: 'Turned down matrimony profile',
+  matrimony_profile_viewed: 'Viewed matrimony profile',
+  matrimony_hidden: 'Hid matrimony profile',
+  matrimony_unhidden: 'Unhid matrimony profile',
+  matrimony_report_resolved: 'Resolved matrimony report',
 }
 
 export function auditActionLabel(action: string): string {
@@ -241,6 +248,8 @@ export function auditTargetHref(row: Pick<AuditLogRow, 'target_type' | 'target_i
   // the console's list instead.
   if (row.target_type === 'business') return '/admin/businesses'
   if (row.target_type === 'notice') return `/admin/notices/${row.target_id}`
+  if (row.target_type === 'matrimony_profile') return `/admin/matrimony/${row.target_id}`
+  if (row.target_type === 'matrimony_report') return '/admin/matrimony?status=reports'
   return null
 }
 

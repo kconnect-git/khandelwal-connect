@@ -2,8 +2,6 @@ alter table people enable row level security;
 alter table businesses enable row level security;
 alter table events enable row level security;
 alter table rsvps enable row level security;
-alter table matrimony_profiles enable row level security;
-alter table matrimony_interests enable row level security;
 alter table dues enable row level security;
 alter table admin_audit_log enable row level security;
 alter table children enable row level security;
@@ -98,5 +96,16 @@ create policy "own invites read" on event_invites for select
 -- notice_unread_count and write only through mark_notices_read.
 alter table notices enable row level security;
 alter table notice_reads enable row level security;
+
+-- Phase 6a (0023): matrimony_profiles / matrimony_photos. RPC-only, like
+-- events and notices -- no policies at all. (The Phase 0 placeholders and
+-- matrimony_interests were dropped; 6b rebuilds interests.)
+alter table matrimony_profiles enable row level security;
+alter table matrimony_photos enable row level security;
+-- (0024) interests, same model.
+alter table matrimony_interests enable row level security;
+-- (0025) blocks and reports, same model.
+alter table matrimony_blocks enable row level security;
+alter table matrimony_reports enable row level security;
 
 -- everything else stays fully closed until you write real policies for it

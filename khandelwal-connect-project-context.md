@@ -6,7 +6,7 @@ This document captures all product, design, and technical decisions made during 
 
 ## 0. Current status (read this first)
 
-**Phases 0 through 5 (0, 1, 2, 3a, 3b, 3c, 4, 5a, 5b-1, 5b-2, 5c) are all complete.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, **`phase-3c-summary.md`**, **`phase-4-summary.md`**, **`phase-5a-summary.md`**, **`phase-5b1-summary.md`**, **`phase-5b2-summary.md`**, and **`phase-5c-summary.md`** before starting Phase 6. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
+**Phases 0 through 5 (0, 1, 2, 3a, 3b, 3c, 4, 5a, 5b-1, 5b-2, 5c) are all complete, and Phase 6 (6a, 6b, 6c) is built.** For the full handoff — schema as it actually stands today, architectural patterns, known gaps — read **`phase-1-summary.md`**, **`phase-2-summary.md`**, **`phase-3a-summary.md`**, **`phase-3b-summary.md`**, **`phase-3c-summary.md`**, **`phase-4-summary.md`**, **`phase-5a-summary.md`**, **`phase-5b1-summary.md`**, **`phase-5b2-summary.md`**, **`phase-5c-summary.md`**, **`phase-6a-summary.md`**, **`phase-6b-summary.md`**, and **`phase-6c-summary.md`** before starting Phase 7. This section is a short pointer, not the source of truth for current state. A small post-3a addendum (optional mobile + DOB per relative on Family details, migrations `0011`/`0012`) is documented in `phase-3a-summary.md` §8. A post-3b database optimization pass (missing index, dead defensive code, and normalizing the 6 family-relation slots off `people` into a `family_relations` table — migrations `0015`/`0016`) is documented in `phase-3b-summary.md` §6.
 
 Phase 0 (backend foundation):
 - ✅ Supabase project created (region: Singapore), email auth + Resend SMTP, OTP email template edited to show the 6-digit code
@@ -90,7 +90,27 @@ Phase 5c (in-app notices — migration `0022`):
 - ✅ Admins (any role): `/admin/notices` (Drafts · Published · Withdrawn, read N / reach N) and a composer with multi-select audience chips, live "will reach N members", preview. Publish / edit-while-live / withdraw are audited
 - ❌ Not built: email or push delivery, scheduling, attachments. See `phase-5c-summary.md`.
 
-**Immediate next step:** apply `0022` and smoke-test (`phase-5c-summary.md` §5), then start Phase 6 (matrimony).
+Phase 6a (matrimony profiles + verification — migration `0023`; Phase 6 was split into 6a/6b/6c during planning):
+- ✅ `matrimony_profiles` (rebuilt from the Phase 0 placeholder) + `matrimony_photos`, RPC-only. Self only; eligibility = approved, 18+, Male/Female, not Married. `draft → pending → approved / changes_requested / rejected`; edits after approval aren't re-reviewed
+- ✅ Opt-in details (diet, smoking, drinking, horoscope) are null-by-default columns, shown only when chosen
+- ✅ 0–3 private photos (`matrimony-photos`, owner + admin read via signed URLs, EXIF stripped by re-encoding)
+- ✅ `/matrimony` + `/matrimony/profile` (Explore tile now live); `/admin/matrimony` queue + review screen (views audited)
+- ✅ Admin console nav is now a sidebar (desktop) / dropdown (phone); Matrimony is the 8th section
+- See `phase-6a-summary.md`.
+
+Phase 6b (matrimony browse + interests — migration `0024`) — **meets the Phase 6 exit criterion**:
+- ✅ `matrimony_interests` (RPC-only) on profile ids: pending → accepted / declined, or withdrawn by the sender. Cap of 10 pending outgoing; a crossing interest auto-matches; decline is silent ("No response")
+- ✅ Browse: live, eligible-now, opposite-gender profiles with age / state / city / education / occupation filters. Cards and detail show no photos or contact before a match
+- ✅ Mutual match unlocks full name, parents, native place, email, mobile (unless hidden) and photos (storage read policy extended to matches)
+- ✅ `/matrimony/interests` (Received · Sent · Matches) and an in-app badge on the Explore tile, dashboard and Interests button
+- See `phase-6b-summary.md`.
+
+Phase 6c (matrimony safety — migration `0025`):
+- ✅ Pause (owner), un-match (either side, re-locks and can't re-send), block (on people; ends matches, hides both ways), report (admins only; Reports tab + Overview tile), admin hide/unhide, delete my matrimony profile
+- ✅ A match now unlocks only while both profiles are active (approved/paused + eligible), so marrying or being hidden suspends matches, reversibly
+- ❌ Not built: telling reporters the outcome, email for any matrimony event (push is Phase 7). See `phase-6c-summary.md`.
+
+**Immediate next step:** apply `0025` and smoke-test (`phase-6c-summary.md` §5), then start Phase 7 (hardening & launch prep).
 
 ---
 
@@ -312,7 +332,10 @@ Assumes a small team (1–2 developers), ~1-week sprints. Compress or stretch as
 - Notice composer with audience targeting
 - **Exit criteria**: admin can approve a new member end-to-end, member sees status change
 
-### Phase 6 — Matrimony (Weeks 9–10, deliberately last)
+### Phase 6 — Matrimony (Weeks 9–10, deliberately last) — **done**, split into 6a / 6b / 6c
+- [x] **6a: profiles + verification**: matrimony profile with opt-in details and private photos, admin verification queue, console sidebar. Full details in `phase-6a-summary.md`
+- [x] **6b: browse + interests**: opposite-gender browse with filters, express interest (cap 10, silent decline), mutual-consent unlock of photos and contact. **Exit criterion met in code** (pending a live smoke test). Full details in `phase-6b-summary.md`
+- [x] **6c: safety**: pause, un-match, block, report → admin hide, delete my profile. Full details in `phase-6c-summary.md`
 - Matrimony profile creation with opt-in tags
 - Browse/filter screen
 - Express interest flow, mutual-consent gating before contact/photos unlock

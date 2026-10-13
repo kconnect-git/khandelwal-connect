@@ -586,25 +586,117 @@ create table admins (
   created_at timestamptz default now()
 );
 
+-- Phase 6a (0023): rebuilt from the Phase 0 placeholder. Self only; RPC-only
+-- like events (RLS on, no policies). matrimony_interests was dropped here and
+-- comes back in 6b against matrimony_profiles.
 create table matrimony_profiles (
   id uuid primary key default gen_random_uuid(),
-  person_id uuid references people(id) unique not null,
-  bio text,
-  height text,
-  profession text,
-  opt_in_tags jsonb default '[]'::jsonb,
-  verified_by_mandal boolean default false,
-  created_at timestamptz default now()
+  person_id uuid not null unique references people(id) on delete cascade,
+  status text not null default 'draft'
+    check (status in ('draft', 'pending', 'changes_requested', 'approved', 'rejected',
+                      -- (0025) owner pause / admin hide
+                      'paused', 'hidden')),
+  height_cm int check (height_cm is null or height_cm between 120 and 230),
+  about_me text check (about_me is null or length(about_me) <= 1000),
+  about_family text check (about_family is null or length(about_family) <= 600),
+  partner_expectations text
+    check (partner_expectations is null or length(partner_expectations) <= 600),
+  -- Opt-in details. Null = the member chose not to disclose it.
+  diet text
+    check (diet is null or diet in ('Vegetarian', 'Jain', 'Eggetarian', 'Non-vegetarian')),
+  smoking text check (smoking is null or smoking in ('Never', 'Occasionally', 'Yes')),
+  drinking text check (drinking is null or drinking in ('Never', 'Occasionally', 'Yes')),
+  birth_time time,
+  birth_place text check (birth_place is null or length(birth_place) <= 100),
+  rashi text check (rashi is null or rashi in (
+    'Mesh', 'Vrishabh', 'Mithun', 'Kark', 'Simha', 'Kanya',
+    'Tula', 'Vrishchik', 'Dhanu', 'Makar', 'Kumbh', 'Meen')),
+  nakshatra text check (nakshatra is null or nakshatra in (
+    'Ashwini', 'Bharani', 'Krittika', 'Rohini', 'Mrigashira', 'Ardra', 'Punarvasu',
+    'Pushya', 'Ashlesha', 'Magha', 'Purva Phalguni', 'Uttara Phalguni', 'Hasta',
+    'Chitra', 'Swati', 'Vishakha', 'Anuradha', 'Jyeshtha', 'Mula', 'Purva Ashadha',
+    'Uttara Ashadha', 'Shravana', 'Dhanishta', 'Shatabhisha', 'Purva Bhadrapada',
+    'Uttara Bhadrapada', 'Revati')),
+  -- The admin's "what to change" note or rejection reason; which one is
+  -- implied by the status, as with people.admin_message.
+  review_note text,
+  submitted_at timestamptz,
+  reviewed_at timestamptz,
+  reviewed_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
+-- The admin queue filters by status and orders by submitted_at.
+create index matrimony_profiles_status_idx on matrimony_profiles (status, submitted_at);
+
+create table matrimony_photos (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references matrimony_profiles(id) on delete cascade,
+  -- {auth uid}/{uuid}.jpg inside the matrimony-photos bucket.
+  storage_path text not null unique,
+  -- 1 = the main photo. Deferrable so a reorder can permute positions in a
+  -- single UPDATE without tripping over itself mid-statement.
+  position int not null check (position between 1 and 3),
+  created_at timestamptz not null default now(),
+  constraint matrimony_photos_position_key unique (profile_id, position)
+    deferrable initially immediate
+);
+
+-- Phase 6b (0024): interests between matrimony profiles. RPC-only.
 create table matrimony_interests (
   id uuid primary key default gen_random_uuid(),
-  from_person_id uuid references people(id) not null,
-  to_person_id uuid references people(id) not null,
-  status text default 'pending' check (status in ('pending','accepted','declined')),
-  created_at timestamptz default now(),
-  unique(from_person_id, to_person_id)
+  from_profile_id uuid not null references matrimony_profiles(id) on delete cascade,
+  to_profile_id uuid not null references matrimony_profiles(id) on delete cascade,
+  message text check (message is null or length(message) <= 300),
+  status text not null default 'pending'
+    check (status in ('pending', 'accepted', 'declined', 'withdrawn', 'ended')),
+  created_at timestamptz not null default now(),
+  responded_at timestamptz,
+  -- Badge bookkeeping: the recipient has seen a pending interest; the
+  -- sender has seen that it was accepted.
+  recipient_seen_at timestamptz,
+  sender_seen_at timestamptz,
+  -- (0025) un-match
+  ended_by_profile_id uuid references matrimony_profiles(id) on delete set null,
+  ended_at timestamptz,
+  constraint matrimony_interests_pair_key unique (from_profile_id, to_profile_id),
+  constraint matrimony_interests_not_self check (from_profile_id <> to_profile_id)
 );
+
+create index matrimony_interests_to_idx on matrimony_interests (to_profile_id, status);
+create index matrimony_interests_from_idx on matrimony_interests (from_profile_id, status);
+
+-- Phase 6c (0025): blocks and reports. RPC-only.
+-- Who has blocked whom. People, not profiles: survives a profile being
+-- deleted and recreated.
+create table matrimony_blocks (
+  blocker_person_id uuid not null references people(id) on delete cascade,
+  blocked_person_id uuid not null references people(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (blocker_person_id, blocked_person_id),
+  constraint matrimony_blocks_not_self check (blocker_person_id <> blocked_person_id)
+);
+
+create index matrimony_blocks_blocked_idx on matrimony_blocks (blocked_person_id);
+
+create table matrimony_reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_person_id uuid not null references people(id) on delete cascade,
+  reported_person_id uuid not null references people(id) on delete cascade,
+  reason text not null check (reason in ('Fake profile', 'Inappropriate content',
+                                          'Already married', 'Harassment', 'Other')),
+  details text check (details is null or length(details) <= 1000),
+  status text not null default 'open' check (status in ('open', 'resolved')),
+  resolution_note text,
+  resolved_by uuid references auth.users(id),
+  resolved_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create unique index matrimony_reports_one_open_idx
+  on matrimony_reports (reporter_person_id, reported_person_id) where status = 'open';
+create index matrimony_reports_status_idx on matrimony_reports (status, created_at);
 
 create table dues (
   id uuid primary key default gen_random_uuid(),
@@ -2441,11 +2533,6 @@ $$;
 revoke all on function admin_get_member(uuid) from public;
 grant execute on function admin_get_member(uuid) to authenticated;
 
--- The first reader of admin_audit_log (written since 0018). Newest first,
--- with the acting admin's name and a human label for the target resolved
--- per target_type. p_target_id narrows to one record's history (the member
--- detail screen); p_action_prefix to one family of actions ('member_',
--- 'event_', ...). Clamp 1-50.
 create or replace function admin_list_audit_log(
   p_target_id uuid default null,
   p_action_prefix text default null,
@@ -2475,6 +2562,12 @@ as $$
            when 'event' then (select t.title from events t where t.id = a.target_id)
            when 'business' then (select t.name from businesses t where t.id = a.target_id)
            when 'notice' then (select t.title from notices t where t.id = a.target_id)
+           when 'matrimony_profile' then (select t.full_name from matrimony_profiles m
+                                          join people t on t.id = m.person_id
+                                          where m.id = a.target_id)
+           when 'matrimony_report' then (select t.full_name from matrimony_reports r
+                                         join people t on t.id = r.reported_person_id
+                                         where r.id = a.target_id)
          end,
          a.notes, a.admin_id, ap.full_name,
          count(*) over ()
@@ -2494,9 +2587,6 @@ $$;
 revoke all on function admin_list_audit_log(uuid, text, int, int) from public;
 grant execute on function admin_list_audit_log(uuid, text, int, int) to authenticated;
 
--- Counters for the console's Overview. One round trip; null for a non-admin.
--- members_by_status only carries statuses that have at least one row -- the
--- client defaults the rest to 0.
 create or replace function admin_overview_stats()
 returns jsonb
 language sql
@@ -2516,7 +2606,10 @@ as $$
     'businesses', (select count(*) from businesses),
     'businesses_hidden', (select count(*) from businesses where is_hidden),
     'notices_active', (select count(*) from notices
-                       where status = 'published' and (expires_at is null or expires_at > now()))
+                       where status = 'published' and (expires_at is null or expires_at > now())),
+    'matrimony_pending', (select count(*) from matrimony_profiles where status = 'pending'),
+    'matrimony_approved', (select count(*) from matrimony_profiles where status = 'approved'),
+    'matrimony_reports_open', (select count(*) from matrimony_reports where status = 'open')
   )
   where is_admin();
 $$;
@@ -3227,3 +3320,1531 @@ $$;
 
 revoke all on function admin_delete_notice(uuid) from public;
 grant execute on function admin_delete_notice(uuid) to authenticated;
+
+-- ================================================================
+-- Phase 6a (0023): matrimony profiles
+-- ================================================================
+
+-- Why this person can't have a live matrimony profile, or null if they can.
+-- The one eligibility rule, used at submit, at approval and (6b) at read
+-- time. Not client-callable.
+create or replace function matrimony_ineligible_reason(
+  p_member_status text,
+  p_dob date,
+  p_gender text,
+  p_marital_status text
+)
+returns text
+language sql
+stable
+as $$
+  select case
+    when p_member_status is distinct from 'approved'
+      then 'Your membership needs to be approved first.'
+    when p_dob is null
+      then 'Add your date of birth on your profile first.'
+    when p_dob > (current_date - interval '18 years')::date
+      then 'You need to be 18 or older.'
+    when p_gender is null or p_gender not in ('Male', 'Female')
+      then 'Set your gender to Male or Female on your profile.'
+    when p_marital_status = 'Married'
+      then 'Your profile says you are married.'
+  end;
+$$;
+
+revoke all on function matrimony_ineligible_reason(text, date, text, text)
+  from public, anon, authenticated;
+
+-- Everything the owner's matrimony page needs in one call: the basics it
+-- shows read-only from people, why they're ineligible (if they are), and
+-- their profile + photos (null if they haven't started one).
+create or replace function get_my_matrimony_profile()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'basics', jsonb_build_object(
+      'first_name', p.first_name,
+      'last_name', p.last_name,
+      'full_name', p.full_name,
+      'gender', p.gender,
+      'dob', p.dob,
+      'gotra', p.gotra,
+      'current_city', p.current_city,
+      'current_state', p.current_state,
+      'education', p.education,
+      'occupation_type', p.occupation_type,
+      'marital_status', p.marital_status
+    ),
+    'ineligible_reason', matrimony_ineligible_reason(p.member_status, p.dob, p.gender,
+                                                     p.marital_status),
+    'profile', (select to_jsonb(m) from matrimony_profiles m where m.person_id = p.id),
+    'photos', coalesce(
+      (select jsonb_agg(jsonb_build_object('id', ph.id, 'storage_path', ph.storage_path,
+                                           'position', ph.position)
+                        order by ph.position)
+       from matrimony_photos ph
+       join matrimony_profiles m on m.id = ph.profile_id
+       where m.person_id = p.id),
+      '[]'::jsonb)
+  )
+  from people p
+  where p.auth_user_id = auth.uid();
+$$;
+
+revoke all on function get_my_matrimony_profile() from public;
+grant execute on function get_my_matrimony_profile() to authenticated;
+
+-- The caller's profile id, creating a draft if they have none. Approved
+-- members only. Not client-callable -- the save / photo RPCs use it.
+create or replace function matrimony_own_profile_id()
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_person_id uuid;
+  v_id uuid;
+begin
+  select id into v_person_id from people
+  where auth_user_id = auth.uid() and member_status = 'approved';
+  if not found then
+    raise exception 'Only approved members can create a matrimony profile';
+  end if;
+
+  select id into v_id from matrimony_profiles where person_id = v_person_id;
+  if v_id is null then
+    insert into matrimony_profiles (person_id) values (v_person_id)
+    on conflict (person_id) do nothing;
+    select id into v_id from matrimony_profiles where person_id = v_person_id;
+  end if;
+  return v_id;
+end;
+$$;
+
+revoke all on function matrimony_own_profile_id() from public, anon, authenticated;
+
+-- Create or edit the caller's profile. Blank strings are stored as null
+-- (= not disclosed). Leaves the status alone: a draft stays a draft, and an
+-- approved profile stays approved -- edits after approval aren't re-reviewed.
+-- A rejected profile is locked.
+create or replace function save_my_matrimony_profile(
+  p_height_cm int,
+  p_about_me text,
+  p_about_family text,
+  p_partner_expectations text,
+  p_diet text default null,
+  p_smoking text default null,
+  p_drinking text default null,
+  p_birth_time time default null,
+  p_birth_place text default null,
+  p_rashi text default null,
+  p_nakshatra text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid := matrimony_own_profile_id();
+  v_status text;
+begin
+  select status into v_status from matrimony_profiles where id = v_id for update;
+  if v_status = 'rejected' then
+    raise exception 'This profile was turned down and can no longer be edited';
+  end if;
+  if length(trim(coalesce(p_about_me, ''))) > 1000 then
+    raise exception 'Keep "About me" to 1000 characters';
+  end if;
+  if length(trim(coalesce(p_about_family, ''))) > 600 then
+    raise exception 'Keep "About my family" to 600 characters';
+  end if;
+  if length(trim(coalesce(p_partner_expectations, ''))) > 600 then
+    raise exception 'Keep "What I''m looking for" to 600 characters';
+  end if;
+
+  -- Enum values and the height range are enforced by the table's check
+  -- constraints; a bad value surfaces as a constraint error.
+  update matrimony_profiles
+  set height_cm = p_height_cm,
+      about_me = nullif(trim(p_about_me), ''),
+      about_family = nullif(trim(p_about_family), ''),
+      partner_expectations = nullif(trim(p_partner_expectations), ''),
+      diet = nullif(trim(p_diet), ''),
+      smoking = nullif(trim(p_smoking), ''),
+      drinking = nullif(trim(p_drinking), ''),
+      birth_time = p_birth_time,
+      birth_place = nullif(trim(p_birth_place), ''),
+      rashi = nullif(trim(p_rashi), ''),
+      nakshatra = nullif(trim(p_nakshatra), ''),
+      updated_at = now()
+  where id = v_id;
+  return v_id;
+end;
+$$;
+
+revoke all on function save_my_matrimony_profile(int, text, text, text, text, text, text, time, text, text, text) from public;
+grant execute on function save_my_matrimony_profile(int, text, text, text, text, text, text, time, text, text, text) to authenticated;
+
+-- draft / changes_requested -> pending. Checks eligibility and the two
+-- required fields.
+create or replace function submit_matrimony_profile()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_person people%rowtype;
+  v_profile matrimony_profiles%rowtype;
+  v_reason text;
+begin
+  select * into v_person from people where auth_user_id = auth.uid();
+  if not found then
+    raise exception 'Profile not found';
+  end if;
+  v_reason := matrimony_ineligible_reason(v_person.member_status, v_person.dob,
+                                          v_person.gender, v_person.marital_status);
+  if v_reason is not null then
+    raise exception '%', v_reason;
+  end if;
+
+  select * into v_profile from matrimony_profiles where person_id = v_person.id for update;
+  if not found then
+    raise exception 'Save your matrimony profile first';
+  end if;
+  if v_profile.status not in ('draft', 'changes_requested') then
+    raise exception 'This profile has already been submitted';
+  end if;
+  if v_profile.height_cm is null then
+    raise exception 'Please add your height';
+  end if;
+  if v_profile.about_me is null then
+    raise exception 'Please write something in "About me"';
+  end if;
+
+  update matrimony_profiles
+  set status = 'pending', submitted_at = now(), updated_at = now()
+  where id = v_profile.id;
+end;
+$$;
+
+revoke all on function submit_matrimony_profile() from public;
+grant execute on function submit_matrimony_profile() to authenticated;
+
+-- Record a photo the client has just uploaded to
+-- matrimony-photos/{auth uid}/... . Takes the next free position (max 3).
+create or replace function add_matrimony_photo(p_storage_path text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile_id uuid := matrimony_own_profile_id();
+  v_position int;
+  v_id uuid;
+begin
+  if p_storage_path is null
+     or split_part(p_storage_path, '/', 1) <> auth.uid()::text
+     or p_storage_path !~ '^[0-9a-f-]+/[A-Za-z0-9_-]+\.jpg$' then
+    raise exception 'Invalid photo path';
+  end if;
+  if not exists (select 1 from storage.objects
+                 where bucket_id = 'matrimony-photos' and name = p_storage_path) then
+    raise exception 'Photo upload not found';
+  end if;
+  if (select status from matrimony_profiles where id = v_profile_id) = 'rejected' then
+    raise exception 'This profile was turned down and can no longer be edited';
+  end if;
+
+  select min(n) into v_position
+  from generate_series(1, 3) n
+  where not exists (select 1 from matrimony_photos
+                    where profile_id = v_profile_id and position = n);
+  if v_position is null then
+    raise exception 'You can add up to 3 photos';
+  end if;
+
+  insert into matrimony_photos (profile_id, storage_path, position)
+  values (v_profile_id, p_storage_path, v_position)
+  returning id into v_id;
+  update matrimony_profiles set updated_at = now() where id = v_profile_id;
+  return v_id;
+end;
+$$;
+
+revoke all on function add_matrimony_photo(text) from public;
+grant execute on function add_matrimony_photo(text) to authenticated;
+
+-- Remove one of the caller's photos and close the gap in positions.
+-- Returns the storage path so the client can delete the file itself
+-- (owner delete policy above).
+create or replace function remove_matrimony_photo(p_photo_id uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile_id uuid;
+  v_path text;
+begin
+  delete from matrimony_photos ph
+  using matrimony_profiles m, people p
+  where ph.id = p_photo_id
+    and m.id = ph.profile_id
+    and p.id = m.person_id
+    and p.auth_user_id = auth.uid()
+  returning ph.profile_id, ph.storage_path into v_profile_id, v_path;
+  if v_path is null then
+    raise exception 'Photo not found';
+  end if;
+
+  update matrimony_photos ph
+  set position = r.n
+  from (select id, row_number() over (order by position) as n
+        from matrimony_photos where profile_id = v_profile_id) r
+  where ph.id = r.id and ph.position <> r.n;
+  update matrimony_profiles set updated_at = now() where id = v_profile_id;
+  return v_path;
+end;
+$$;
+
+revoke all on function remove_matrimony_photo(uuid) from public;
+grant execute on function remove_matrimony_photo(uuid) to authenticated;
+
+-- Put one of the caller's photos first (the main photo); the rest keep
+-- their relative order.
+create or replace function set_main_matrimony_photo(p_photo_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile_id uuid;
+begin
+  select ph.profile_id into v_profile_id
+  from matrimony_photos ph
+  join matrimony_profiles m on m.id = ph.profile_id
+  join people p on p.id = m.person_id
+  where ph.id = p_photo_id and p.auth_user_id = auth.uid();
+  if v_profile_id is null then
+    raise exception 'Photo not found';
+  end if;
+
+  -- The position key is deferrable, so it's checked at the end of this
+  -- statement rather than row by row as the positions swap.
+  update matrimony_photos ph
+  set position = r.n
+  from (select id,
+               row_number() over (order by (id = p_photo_id) desc, position) as n
+        from matrimony_photos where profile_id = v_profile_id) r
+  where ph.id = r.id and ph.position <> r.n;
+end;
+$$;
+
+revoke all on function set_main_matrimony_photo(uuid) from public;
+grant execute on function set_main_matrimony_photo(uuid) to authenticated;
+
+-- ---------------------------------------------------------------- admin
+
+-- The verification queue. p_status null = all. Pending sorts oldest
+-- submission first (it's a queue); the other tabs newest review first.
+create or replace function admin_list_matrimony_profiles(
+  p_status text default 'pending',
+  p_search text default null,
+  p_limit int default 25,
+  p_offset int default 0
+)
+returns table (
+  id uuid,
+  person_id uuid,
+  full_name text,
+  member_code text,
+  gender text,
+  age int,
+  current_city text,
+  current_state text,
+  gotra text,
+  status text,
+  photo_count int,
+  ineligible_reason text,
+  review_note text,
+  submitted_at timestamptz,
+  reviewed_at timestamptz,
+  reviewed_by_name text,
+  total_count bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select m.id, p.id, p.full_name, p.member_code, p.gender,
+         date_part('year', age(p.dob))::int,
+         p.current_city, p.current_state, p.gotra, m.status,
+         (select count(*)::int from matrimony_photos ph where ph.profile_id = m.id),
+         matrimony_ineligible_reason(p.member_status, p.dob, p.gender, p.marital_status),
+         m.review_note, m.submitted_at, m.reviewed_at,
+         (select r.full_name from people r where r.auth_user_id = m.reviewed_by),
+         count(*) over ()
+  from matrimony_profiles m
+  join people p on p.id = m.person_id
+  where is_admin()
+    and (p_status is null or m.status = p_status)
+    and (p_search is null or length(trim(p_search)) = 0
+         or p.full_name ilike '%' || trim(p_search) || '%'
+         or p.member_code ilike '%' || trim(p_search) || '%')
+  order by
+    case when m.status = 'pending' then m.submitted_at end asc nulls last,
+    coalesce(m.reviewed_at, m.updated_at) desc,
+    m.id asc
+  limit least(greatest(coalesce(p_limit, 25), 1), 50)
+  offset greatest(coalesce(p_offset, 0), 0);
+$$;
+
+revoke all on function admin_list_matrimony_profiles(text, text, int, int) from public;
+grant execute on function admin_list_matrimony_profiles(text, text, int, int) to authenticated;
+
+-- One profile for the review screen: the matrimony fields, the member's
+-- basics, photo paths and eligibility. Opening it shows private photos, so
+-- it is audited as matrimony_profile_viewed -- at most once per admin per
+-- profile per 10 minutes, so a reload doesn't flood the log.
+create or replace function admin_get_matrimony_profile(p_profile_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_result jsonb;
+  v_admin_person_id uuid;
+begin
+  if not is_admin() then
+    raise exception 'Not an admin';
+  end if;
+
+  select to_jsonb(m) || jsonb_build_object(
+           'full_name', p.full_name,
+           'member_code', p.member_code,
+           'gender', p.gender,
+           'dob', p.dob,
+           'gotra', p.gotra,
+           'current_city', p.current_city,
+           'current_state', p.current_state,
+           'education', p.education,
+           'occupation_type', p.occupation_type,
+           'marital_status', p.marital_status,
+           'member_status', p.member_status,
+           'ineligible_reason', matrimony_ineligible_reason(p.member_status, p.dob, p.gender,
+                                                            p.marital_status),
+           'reviewed_by_name', (select r.full_name from people r
+                                where r.auth_user_id = m.reviewed_by),
+           'photos', coalesce(
+             (select jsonb_agg(jsonb_build_object('id', ph.id, 'storage_path', ph.storage_path,
+                                                  'position', ph.position)
+                               order by ph.position)
+              from matrimony_photos ph where ph.profile_id = m.id),
+             '[]'::jsonb))
+  into v_result
+  from matrimony_profiles m
+  join people p on p.id = m.person_id
+  where m.id = p_profile_id;
+
+  if v_result is null then
+    return null;
+  end if;
+
+  select id into v_admin_person_id from people where auth_user_id = auth.uid();
+  if not exists (select 1 from admin_audit_log
+                 where action = 'matrimony_profile_viewed'
+                   and target_id = p_profile_id
+                   and admin_id is not distinct from v_admin_person_id
+                   and created_at > now() - interval '10 minutes') then
+    insert into admin_audit_log (admin_id, action, target_type, target_id, notes)
+    values (v_admin_person_id, 'matrimony_profile_viewed', 'matrimony_profile', p_profile_id, null);
+  end if;
+  return v_result;
+end;
+$$;
+
+revoke all on function admin_get_matrimony_profile(uuid) from public;
+grant execute on function admin_get_matrimony_profile(uuid) to authenticated;
+
+-- (6c) An approved or paused profile can also be sent back or turned down.
+-- A hidden one goes through admin_set_matrimony_hidden instead.
+create or replace function admin_set_matrimony_status(
+  p_profile_id uuid,
+  p_status text,
+  p_note text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile matrimony_profiles%rowtype;
+  v_person people%rowtype;
+  v_reason text;
+  v_note text := nullif(trim(p_note), '');
+  v_admin_person_id uuid;
+begin
+  if not is_admin() then
+    raise exception 'Not an admin';
+  end if;
+  if p_status not in ('approved', 'changes_requested', 'rejected') then
+    raise exception 'Invalid status: %', p_status;
+  end if;
+  if p_status <> 'approved' and v_note is null then
+    raise exception 'Please tell the member why';
+  end if;
+
+  select * into v_profile from matrimony_profiles where id = p_profile_id for update;
+  if not found then
+    raise exception 'Profile not found';
+  end if;
+  if not (v_profile.status = 'pending'
+          or (v_profile.status in ('approved', 'paused') and p_status <> 'approved')) then
+    raise exception 'This profile is not awaiting review';
+  end if;
+
+  if p_status = 'approved' then
+    select * into v_person from people where id = v_profile.person_id;
+    v_reason := matrimony_ineligible_reason(v_person.member_status, v_person.dob,
+                                            v_person.gender, v_person.marital_status);
+    if v_reason is not null then
+      raise exception 'Not eligible: %', v_reason;
+    end if;
+  end if;
+
+  update matrimony_profiles
+  set status = p_status,
+      review_note = case when p_status = 'approved' then null else v_note end,
+      reviewed_at = now(), reviewed_by = auth.uid(), updated_at = now()
+  where id = p_profile_id;
+
+  select id into v_admin_person_id from people where auth_user_id = auth.uid();
+  insert into admin_audit_log (admin_id, action, target_type, target_id, notes)
+  values (v_admin_person_id, 'matrimony_' || p_status, 'matrimony_profile', p_profile_id, v_note);
+end;
+$$;
+
+revoke all on function admin_set_matrimony_status(uuid, text, text) from public;
+grant execute on function admin_set_matrimony_status(uuid, text, text) to authenticated;
+
+-- ================================================================
+-- Phase 6b (0024): helpers
+-- ================================================================
+
+-- The caller's matrimony profile id if it is approved and they are still
+-- eligible, else null. The caller gate for browsing and interests. Not
+-- client-callable.
+create or replace function matrimony_my_live_profile_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select m.id
+  from matrimony_profiles m
+  join people p on p.id = m.person_id
+  where p.auth_user_id = auth.uid()
+    and m.status = 'approved'
+    and matrimony_ineligible_reason(p.member_status, p.dob, p.gender, p.marital_status) is null;
+$$;
+
+revoke all on function matrimony_my_live_profile_id() from public, anon, authenticated;
+
+-- (0025) 6c helpers, ahead of everything that uses them.
+-- An approved or paused profile whose member is still eligible. Both sides
+-- of a match must be active for it to unlock anything. Not client-callable.
+create or replace function matrimony_profile_active(p_profile_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from matrimony_profiles m join people p on p.id = m.person_id
+    where m.id = p_profile_id
+      and m.status in ('approved', 'paused')
+      and matrimony_ineligible_reason(p.member_status, p.dob, p.gender, p.marital_status) is null
+  );
+$$;
+
+revoke all on function matrimony_profile_active(uuid) from public, anon, authenticated;
+
+-- The caller's profile if it is active (approved or paused, eligible). A
+-- paused member still sees their matches; only a live (approved) one
+-- browses and sends -- that's matrimony_my_live_profile_id (0024). Not
+-- client-callable.
+create or replace function matrimony_my_active_profile_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select m.id from matrimony_profiles m join people p on p.id = m.person_id
+  where p.auth_user_id = auth.uid() and matrimony_profile_active(m.id);
+$$;
+
+revoke all on function matrimony_my_active_profile_id() from public, anon, authenticated;
+
+-- A block between the members behind two profiles, either direction. Not
+-- client-callable.
+create or replace function matrimony_is_blocked(p_a uuid, p_b uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from matrimony_profiles a, matrimony_profiles b, matrimony_blocks k
+    where a.id = p_a and b.id = p_b
+      and ((k.blocker_person_id = a.person_id and k.blocked_person_id = b.person_id)
+           or (k.blocker_person_id = b.person_id and k.blocked_person_id = a.person_id))
+  );
+$$;
+
+revoke all on function matrimony_is_blocked(uuid, uuid) from public, anon, authenticated;
+
+-- An un-matched pair, either direction. Not client-callable.
+create or replace function matrimony_is_ended(p_a uuid, p_b uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from matrimony_interests i
+    where i.status = 'ended'
+      and ((i.from_profile_id = p_a and i.to_profile_id = p_b)
+           or (i.from_profile_id = p_b and i.to_profile_id = p_a))
+  );
+$$;
+
+revoke all on function matrimony_is_ended(uuid, uuid) from public, anon, authenticated;
+
+-- (6c) The unlock predicate now also needs both profiles active.
+create or replace function matrimony_is_matched(p_a uuid, p_b uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from matrimony_interests i
+    where i.status = 'accepted'
+      and ((i.from_profile_id = p_a and i.to_profile_id = p_b)
+           or (i.from_profile_id = p_b and i.to_profile_id = p_a))
+  )
+  and matrimony_profile_active(p_a)
+  and matrimony_profile_active(p_b);
+$$;
+
+revoke all on function matrimony_is_matched(uuid, uuid) from public, anon, authenticated;
+
+-- Where the caller (p_me) stands with another profile, from the caller's
+-- side: matched / sent / received / no_response (their silent decline of
+-- my interest) / none. Not client-callable.
+create or replace function matrimony_interest_state(p_me uuid, p_other uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when matrimony_is_matched(p_me, p_other) then 'matched'
+    when exists (select 1 from matrimony_interests
+                 where from_profile_id = p_me and to_profile_id = p_other
+                   and status = 'pending') then 'sent'
+    when exists (select 1 from matrimony_interests
+                 where from_profile_id = p_other and to_profile_id = p_me
+                   and status = 'pending') then 'received'
+    when exists (select 1 from matrimony_interests
+                 where from_profile_id = p_me and to_profile_id = p_other
+                   and status = 'declined') then 'no_response'
+    else 'none'
+  end;
+$$;
+
+revoke all on function matrimony_interest_state(uuid, uuid) from public, anon, authenticated;
+
+-- Used by the matrimony-photos read policy: does the caller have a match
+-- with the member who owns this storage folder? Callable by clients (a
+-- storage policy runs as the caller), but only ever answers about the
+-- caller's own matches.
+create or replace function matrimony_photo_visible(p_owner_uid text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from matrimony_profiles mine
+    join people me on me.id = mine.person_id
+    join people owner on owner.auth_user_id::text = p_owner_uid
+    join matrimony_profiles theirs on theirs.person_id = owner.id
+    where me.auth_user_id = auth.uid()
+      and matrimony_is_matched(mine.id, theirs.id)
+  );
+$$;
+
+revoke all on function matrimony_photo_visible(text) from public, anon;
+grant execute on function matrimony_photo_visible(text) to authenticated;
+
+-- ================================================================
+-- Phase 6b (0024): browse
+-- ================================================================
+
+-- (6c) Blocked and un-matched pairs drop out of each other's browse.
+create or replace function list_matrimony_profiles(
+  p_age_min int default null,
+  p_age_max int default null,
+  p_state text default null,
+  p_city text default null,
+  p_education text default null,
+  p_occupation text default null,
+  p_limit int default 20,
+  p_offset int default 0
+)
+returns table (
+  id uuid,
+  first_name text,
+  last_initial text,
+  age int,
+  current_city text,
+  current_state text,
+  gotra text,
+  education text,
+  occupation_type text,
+  height_cm int,
+  about_me text,
+  interest_state text,
+  total_count bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with me as (
+    select m.id, p.gender
+    from matrimony_profiles m join people p on p.id = m.person_id
+    where m.id = matrimony_my_live_profile_id()
+  )
+  select m.id, p.first_name, left(p.last_name, 1),
+         date_part('year', age(p.dob))::int,
+         p.current_city, p.current_state, p.gotra, p.education, p.occupation_type,
+         m.height_cm, m.about_me,
+         matrimony_interest_state(me.id, m.id),
+         count(*) over ()
+  from matrimony_profiles m
+  join people p on p.id = m.person_id
+  cross join me
+  where m.status = 'approved'
+    and m.id <> me.id
+    and p.gender in ('Male', 'Female')
+    and p.gender <> me.gender
+    and matrimony_ineligible_reason(p.member_status, p.dob, p.gender, p.marital_status) is null
+    and not matrimony_is_blocked(me.id, m.id)
+    and not matrimony_is_ended(me.id, m.id)
+    and (p_age_min is null or date_part('year', age(p.dob)) >= p_age_min)
+    and (p_age_max is null or date_part('year', age(p.dob)) <= p_age_max)
+    and (p_state is null or p.current_state = p_state)
+    and (p_city is null or p.current_city = p_city)
+    and (p_education is null or length(trim(p_education)) = 0
+         or p.education ilike '%' || trim(p_education) || '%')
+    and (p_occupation is null or p.occupation_type = p_occupation)
+  order by m.reviewed_at desc nulls last, m.id asc
+  limit least(greatest(coalesce(p_limit, 20), 1), 50)
+  offset greatest(coalesce(p_offset, 0), 0);
+$$;
+
+revoke all on function list_matrimony_profiles(int, int, text, text, text, text, int, int) from public;
+grant execute on function list_matrimony_profiles(int, int, text, text, text, text, int, int) to authenticated;
+
+-- States and cities present among the profiles the caller can browse.
+create or replace function matrimony_filter_options()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with me as (
+    select m.id, p.gender
+    from matrimony_profiles m join people p on p.id = m.person_id
+    where m.id = matrimony_my_live_profile_id()
+  ),
+  visible as (
+    select p.current_state, p.current_city
+    from matrimony_profiles m
+    join people p on p.id = m.person_id
+    cross join me
+    where m.status = 'approved' and m.id <> me.id
+      and p.gender in ('Male', 'Female') and p.gender <> me.gender
+      and matrimony_ineligible_reason(p.member_status, p.dob, p.gender, p.marital_status) is null
+  )
+  select jsonb_build_object(
+    'states', coalesce((select jsonb_agg(distinct current_state order by current_state)
+                        from visible where current_state is not null), '[]'::jsonb),
+    'cities', coalesce((select jsonb_agg(distinct current_city order by current_city)
+                        from visible where current_city is not null), '[]'::jsonb)
+  );
+$$;
+
+revoke all on function matrimony_filter_options() from public;
+grant execute on function matrimony_filter_options() to authenticated;
+
+-- (6c) Works for a paused caller too (matches only). Null when blocked
+-- either way, or un-matched and not matched again. Adds
+-- match_interest_id, for un-matching.
+create or replace function get_matrimony_profile(p_profile_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := matrimony_my_active_profile_id();
+  v_me_live boolean;
+  v_my_gender text;
+  v_matched boolean;
+  v_result jsonb;
+  v_person people%rowtype;
+  v_profile matrimony_profiles%rowtype;
+begin
+  if v_me is null or p_profile_id is null or p_profile_id = v_me then
+    return null;
+  end if;
+  if matrimony_is_blocked(v_me, p_profile_id) then
+    return null;
+  end if;
+
+  select p.gender, m.status = 'approved' into v_my_gender, v_me_live
+  from matrimony_profiles m join people p on p.id = m.person_id where m.id = v_me;
+
+  select * into v_profile from matrimony_profiles where id = p_profile_id;
+  if not found then
+    return null;
+  end if;
+  select * into v_person from people where id = v_profile.person_id;
+
+  v_matched := matrimony_is_matched(v_me, p_profile_id);
+  if not v_matched and not (
+       v_me_live
+       and v_profile.status = 'approved'
+       and v_person.gender in ('Male', 'Female') and v_person.gender <> v_my_gender
+       and matrimony_ineligible_reason(v_person.member_status, v_person.dob, v_person.gender,
+                                       v_person.marital_status) is null
+       and not matrimony_is_ended(v_me, p_profile_id)) then
+    return null;
+  end if;
+
+  v_result := jsonb_build_object(
+    'id', v_profile.id,
+    'first_name', v_person.first_name,
+    'last_initial', left(v_person.last_name, 1),
+    'age', date_part('year', age(v_person.dob))::int,
+    'gender', v_person.gender,
+    'current_city', v_person.current_city,
+    'current_state', v_person.current_state,
+    'gotra', v_person.gotra,
+    'education', v_person.education,
+    'occupation_type', v_person.occupation_type,
+    'height_cm', v_profile.height_cm,
+    'about_me', v_profile.about_me,
+    'about_family', v_profile.about_family,
+    'partner_expectations', v_profile.partner_expectations,
+    'diet', v_profile.diet,
+    'smoking', v_profile.smoking,
+    'drinking', v_profile.drinking,
+    'birth_time', v_profile.birth_time,
+    'birth_place', v_profile.birth_place,
+    'rashi', v_profile.rashi,
+    'nakshatra', v_profile.nakshatra,
+    'interest_state', matrimony_interest_state(v_me, p_profile_id),
+    -- The interest the caller can act on: their own pending one (withdraw)
+    -- or the other person's pending one to them (accept / decline).
+    'outgoing_interest_id', (select i.id from matrimony_interests i
+                             where i.from_profile_id = v_me and i.to_profile_id = p_profile_id
+                               and i.status = 'pending'),
+    'incoming_interest', (select jsonb_build_object('id', i.id, 'message', i.message,
+                                                    'created_at', i.created_at)
+                          from matrimony_interests i
+                          where i.from_profile_id = p_profile_id and i.to_profile_id = v_me
+                            and i.status = 'pending'),
+    'match_interest_id', case when v_matched then
+                           (select i.id from matrimony_interests i
+                            where i.status = 'accepted'
+                              and ((i.from_profile_id = v_me and i.to_profile_id = p_profile_id)
+                                   or (i.from_profile_id = p_profile_id and i.to_profile_id = v_me))
+                            limit 1)
+                         end,
+    'contact', null
+  );
+
+  if v_matched then
+    v_result := v_result || jsonb_build_object('contact', jsonb_build_object(
+      'full_name', v_person.full_name,
+      'father_name', (select r.related_name from family_relations r
+                      where r.person_id = v_person.id and r.slot = 'father'),
+      'mother_name', (select r.related_name from family_relations r
+                      where r.person_id = v_person.id and r.slot = 'mother'),
+      'native_place', v_person.native_place,
+      'email', (select u.email from auth.users u where u.id = v_person.auth_user_id),
+      'mobile_number', case when v_person.hide_mobile then null else v_person.mobile_number end,
+      'mobile_hidden', v_person.hide_mobile,
+      'photo_paths', coalesce((select jsonb_agg(ph.storage_path order by ph.position)
+                               from matrimony_photos ph where ph.profile_id = p_profile_id),
+                              '[]'::jsonb)
+    ));
+  end if;
+  return v_result;
+end;
+$$;
+
+revoke all on function get_matrimony_profile(uuid) from public;
+grant execute on function get_matrimony_profile(uuid) to authenticated;
+
+-- ================================================================
+-- Phase 6b (0024): interests
+-- ================================================================
+
+-- (6c) Unchanged apart from the visibility check now also refusing
+-- blocked and un-matched pairs (via get_matrimony_profile).
+create or replace function express_interest(p_profile_id uuid, p_message text default null)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := matrimony_my_live_profile_id();
+  v_message text := nullif(trim(p_message), '');
+  v_existing matrimony_interests%rowtype;
+  v_reverse uuid;
+begin
+  if v_me is null then
+    raise exception 'Your matrimony profile needs to be live before you can express interest';
+  end if;
+  if v_message is not null and length(v_message) > 300 then
+    raise exception 'Keep the message to 300 characters';
+  end if;
+  -- Visibility check (approved, eligible, opposite gender, not blocked, not
+  -- un-matched) in one place.
+  if get_matrimony_profile(p_profile_id) is null then
+    raise exception 'This profile is not available';
+  end if;
+  if matrimony_is_matched(v_me, p_profile_id) then
+    raise exception 'You are already matched';
+  end if;
+
+  -- Serialise this member's sends so the pending cap can't be raced.
+  perform 1 from matrimony_profiles where id = v_me for update;
+
+  select id into v_reverse from matrimony_interests
+  where from_profile_id = p_profile_id and to_profile_id = v_me and status = 'pending'
+  for update;
+  if v_reverse is not null then
+    update matrimony_interests
+    set status = 'accepted', responded_at = now(), recipient_seen_at = now()
+    where id = v_reverse;
+    return 'matched';
+  end if;
+
+  select * into v_existing from matrimony_interests
+  where from_profile_id = v_me and to_profile_id = p_profile_id
+  for update;
+  if v_existing.id is not null and v_existing.status <> 'withdrawn' then
+    raise exception 'You have already expressed interest in this profile';
+  end if;
+
+  if (select count(*) from matrimony_interests
+      where from_profile_id = v_me and status = 'pending') >= 10 then
+    raise exception 'You have 10 interests waiting for a reply. Withdraw one or wait for replies before sending more.';
+  end if;
+
+  if v_existing.id is not null then
+    update matrimony_interests
+    set status = 'pending', message = v_message, created_at = now(), responded_at = null,
+        recipient_seen_at = null, sender_seen_at = null
+    where id = v_existing.id;
+  else
+    insert into matrimony_interests (from_profile_id, to_profile_id, message)
+    values (v_me, p_profile_id, v_message);
+  end if;
+  return 'sent';
+end;
+$$;
+
+revoke all on function express_interest(uuid, text) from public;
+grant execute on function express_interest(uuid, text) to authenticated;
+
+-- The sender takes back an unanswered interest.
+create or replace function withdraw_interest(p_interest_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update matrimony_interests i
+  set status = 'withdrawn'
+  from matrimony_profiles m, people p
+  where i.id = p_interest_id
+    and i.status = 'pending'
+    and m.id = i.from_profile_id
+    and p.id = m.person_id
+    and p.auth_user_id = auth.uid();
+  if not found then
+    raise exception 'This interest can no longer be withdrawn';
+  end if;
+end;
+$$;
+
+revoke all on function withdraw_interest(uuid) from public;
+grant execute on function withdraw_interest(uuid) to authenticated;
+
+-- (6c) Replying needs a live profile; a paused member resumes first.
+create or replace function respond_interest(p_interest_id uuid, p_accept boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid := matrimony_my_live_profile_id();
+  v_interest matrimony_interests%rowtype;
+begin
+  if v_me is null then
+    raise exception 'Your matrimony profile needs to be live to reply. If it is paused, resume it first.';
+  end if;
+
+  select * into v_interest from matrimony_interests
+  where id = p_interest_id and to_profile_id = v_me
+  for update;
+  if not found or v_interest.status <> 'pending' then
+    raise exception 'This interest is no longer waiting for a reply';
+  end if;
+  if coalesce(p_accept, false) and get_matrimony_profile(v_interest.from_profile_id) is null then
+    raise exception 'This profile is no longer available';
+  end if;
+
+  update matrimony_interests
+  set status = case when coalesce(p_accept, false) then 'accepted' else 'declined' end,
+      responded_at = now(),
+      recipient_seen_at = coalesce(recipient_seen_at, now())
+  where id = p_interest_id;
+end;
+$$;
+
+revoke all on function respond_interest(uuid, boolean) from public;
+grant execute on function respond_interest(uuid, boolean) to authenticated;
+
+-- (6c) Blocked pairs are left out of every box; Matches only lists matches
+-- that are still active on both sides.
+create or replace function list_my_interests(p_box text)
+returns table (
+  interest_id uuid,
+  profile_id uuid,
+  first_name text,
+  last_initial text,
+  full_name text,
+  age int,
+  current_city text,
+  current_state text,
+  gotra text,
+  education text,
+  occupation_type text,
+  height_cm int,
+  status text,
+  message text,
+  created_at timestamptz,
+  responded_at timestamptz,
+  is_new boolean,
+  main_photo_path text
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with me as (
+    select m.id from matrimony_profiles m join people p on p.id = m.person_id
+    where p.auth_user_id = auth.uid()
+  ),
+  boxed as (
+    select i.*,
+           case when i.from_profile_id = me.id then i.to_profile_id else i.from_profile_id end
+             as other_id,
+           i.from_profile_id = me.id as outgoing,
+           me.id as me_id
+    from matrimony_interests i cross join me
+    where (p_box = 'received' and i.to_profile_id = me.id and i.status = 'pending')
+       or (p_box = 'sent' and i.from_profile_id = me.id and i.status in ('pending', 'declined'))
+       or (p_box = 'matches' and i.status = 'accepted'
+           and (i.from_profile_id = me.id or i.to_profile_id = me.id))
+  )
+  select r.id, o.id, p.first_name, left(p.last_name, 1),
+         case when r.status = 'accepted' then p.full_name end,
+         date_part('year', age(p.dob))::int,
+         p.current_city, p.current_state, p.gotra, p.education, p.occupation_type, o.height_cm,
+         case when r.status = 'declined' then 'no_response' else r.status end,
+         r.message, r.created_at, r.responded_at,
+         case
+           when p_box = 'received' then r.recipient_seen_at is null
+           when p_box = 'matches' then r.outgoing and r.sender_seen_at is null
+           else false
+         end,
+         case when r.status = 'accepted' then
+           (select ph.storage_path from matrimony_photos ph
+            where ph.profile_id = o.id and ph.position = 1)
+         end
+  from boxed r
+  join matrimony_profiles o on o.id = r.other_id
+  join people p on p.id = o.person_id
+  where not matrimony_is_blocked(r.me_id, o.id)
+    and (p_box <> 'received'
+         or (o.status = 'approved'
+             and matrimony_ineligible_reason(p.member_status, p.dob, p.gender,
+                                             p.marital_status) is null))
+    and (p_box <> 'matches' or matrimony_is_matched(r.me_id, o.id))
+  order by coalesce(r.responded_at, r.created_at) desc, r.id asc;
+$$;
+
+revoke all on function list_my_interests(text) from public;
+grant execute on function list_my_interests(text) to authenticated;
+
+-- Clear the "new" flags for one box once the member has looked at it.
+create or replace function mark_interests_seen(p_box text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  with me as (
+    select m.id from matrimony_profiles m join people p on p.id = m.person_id
+    where p.auth_user_id = auth.uid()
+  )
+  update matrimony_interests i
+  set recipient_seen_at = case when p_box = 'received' then now() else i.recipient_seen_at end,
+      sender_seen_at = case when p_box = 'matches' then now() else i.sender_seen_at end
+  from me
+  where (p_box = 'received' and i.to_profile_id = me.id and i.status = 'pending'
+         and i.recipient_seen_at is null)
+     or (p_box = 'matches' and i.from_profile_id = me.id and i.status = 'accepted'
+         and i.sender_seen_at is null);
+$$;
+
+revoke all on function mark_interests_seen(text) from public;
+grant execute on function mark_interests_seen(text) to authenticated;
+
+-- (6c) New matches only count while the match is active.
+create or replace function matrimony_badge_count()
+returns int
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with me as (
+    select m.id from matrimony_profiles m join people p on p.id = m.person_id
+    where p.auth_user_id = auth.uid()
+  )
+  select (
+    (select count(*) from matrimony_interests i
+     join matrimony_profiles o on o.id = i.from_profile_id
+     join people p on p.id = o.person_id
+     cross join me
+     where i.to_profile_id = me.id and i.status = 'pending' and i.recipient_seen_at is null
+       and o.status = 'approved'
+       and matrimony_ineligible_reason(p.member_status, p.dob, p.gender, p.marital_status) is null
+       and not matrimony_is_blocked(me.id, o.id))
+    +
+    (select count(*) from matrimony_interests i cross join me
+     where i.from_profile_id = me.id and i.status = 'accepted' and i.sender_seen_at is null
+       and matrimony_is_matched(i.from_profile_id, i.to_profile_id))
+  )::int;
+$$;
+
+revoke all on function matrimony_badge_count() from public;
+grant execute on function matrimony_badge_count() to authenticated;
+
+-- ================================================================
+-- Phase 6c (0025): member safety actions
+-- ================================================================
+
+-- Pause (approved -> paused) or resume (paused -> approved). Paused = out
+-- of browse and can't send or reply; existing matches keep working.
+create or replace function set_matrimony_paused(p_paused boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update matrimony_profiles m
+  set status = case when p_paused then 'paused' else 'approved' end, updated_at = now()
+  from people p
+  where p.id = m.person_id and p.auth_user_id = auth.uid()
+    and m.status = case when p_paused then 'approved' else 'paused' end;
+  if not found then
+    raise exception '%', case when p_paused then 'Only a live profile can be paused'
+                              else 'Only a paused profile can be resumed' end;
+  end if;
+end;
+$$;
+
+revoke all on function set_matrimony_paused(boolean) from public;
+grant execute on function set_matrimony_paused(boolean) to authenticated;
+
+-- Un-match, by either side. Photos and contact re-lock for both, and the
+-- pair can't send interest to each other again.
+create or replace function end_matrimony_match(p_interest_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid;
+begin
+  select m.id into v_me from matrimony_profiles m join people p on p.id = m.person_id
+  where p.auth_user_id = auth.uid();
+
+  update matrimony_interests
+  set status = 'ended', ended_by_profile_id = v_me, ended_at = now()
+  where id = p_interest_id and status = 'accepted'
+    and v_me is not null and (from_profile_id = v_me or to_profile_id = v_me);
+  if not found then
+    raise exception 'This match could not be found';
+  end if;
+end;
+$$;
+
+revoke all on function end_matrimony_match(uuid) from public;
+grant execute on function end_matrimony_match(uuid) to authenticated;
+
+-- Block the member behind a profile. Ends any match, withdraws the
+-- caller's pending interest and silently declines theirs. Idempotent.
+create or replace function block_matrimony_profile(p_profile_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me matrimony_profiles%rowtype;
+  v_other matrimony_profiles%rowtype;
+begin
+  select m.* into v_me from matrimony_profiles m join people p on p.id = m.person_id
+  where p.auth_user_id = auth.uid();
+  if not found then
+    raise exception 'You need a matrimony profile to block someone';
+  end if;
+  select * into v_other from matrimony_profiles where id = p_profile_id;
+  if not found or v_other.id = v_me.id then
+    raise exception 'Profile not found';
+  end if;
+
+  insert into matrimony_blocks (blocker_person_id, blocked_person_id)
+  values (v_me.person_id, v_other.person_id)
+  on conflict do nothing;
+
+  update matrimony_interests
+  set status = case
+                 when status = 'accepted' then 'ended'
+                 when from_profile_id = v_me.id then 'withdrawn'
+                 else 'declined'
+               end,
+      ended_by_profile_id = case when status = 'accepted' then v_me.id else ended_by_profile_id end,
+      ended_at = case when status = 'accepted' then now() else ended_at end,
+      responded_at = case when status = 'pending' and to_profile_id = v_me.id then now()
+                          else responded_at end
+  where status in ('accepted', 'pending')
+    and ((from_profile_id = v_me.id and to_profile_id = v_other.id)
+         or (from_profile_id = v_other.id and to_profile_id = v_me.id));
+end;
+$$;
+
+revoke all on function block_matrimony_profile(uuid) from public;
+grant execute on function block_matrimony_profile(uuid) to authenticated;
+
+-- Lift a block. An ended match stays ended.
+create or replace function unblock_matrimony_person(p_person_id uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  delete from matrimony_blocks k
+  using people p
+  where p.auth_user_id = auth.uid()
+    and k.blocker_person_id = p.id
+    and k.blocked_person_id = p_person_id;
+$$;
+
+revoke all on function unblock_matrimony_person(uuid) from public;
+grant execute on function unblock_matrimony_person(uuid) to authenticated;
+
+-- The members the caller has blocked: first name + initial only.
+create or replace function list_my_matrimony_blocks()
+returns table (person_id uuid, first_name text, last_initial text, created_at timestamptz)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select b.id, b.first_name, left(b.last_name, 1), k.created_at
+  from matrimony_blocks k
+  join people me on me.id = k.blocker_person_id
+  join people b on b.id = k.blocked_person_id
+  where me.auth_user_id = auth.uid()
+  order by k.created_at desc;
+$$;
+
+revoke all on function list_my_matrimony_blocks() from public;
+grant execute on function list_my_matrimony_blocks() to authenticated;
+
+-- Report the member behind a profile to the admins. Allowed for a profile
+-- the caller can see, has had an interest with, or has blocked. One open
+-- report per reporter per member.
+create or replace function report_matrimony_profile(
+  p_profile_id uuid,
+  p_reason text,
+  p_details text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me matrimony_profiles%rowtype;
+  v_other matrimony_profiles%rowtype;
+  v_details text := nullif(trim(p_details), '');
+begin
+  select m.* into v_me from matrimony_profiles m join people p on p.id = m.person_id
+  where p.auth_user_id = auth.uid();
+  if not found then
+    raise exception 'You need a matrimony profile to report someone';
+  end if;
+  select * into v_other from matrimony_profiles where id = p_profile_id;
+  if not found or v_other.id = v_me.id then
+    raise exception 'Profile not found';
+  end if;
+  if get_matrimony_profile(p_profile_id) is null
+     and not exists (select 1 from matrimony_interests i
+                     where (i.from_profile_id = v_me.id and i.to_profile_id = v_other.id)
+                        or (i.from_profile_id = v_other.id and i.to_profile_id = v_me.id))
+     and not exists (select 1 from matrimony_blocks k
+                     where k.blocker_person_id = v_me.person_id
+                       and k.blocked_person_id = v_other.person_id) then
+    raise exception 'Profile not found';
+  end if;
+  if v_details is not null and length(v_details) > 1000 then
+    raise exception 'Keep the details to 1000 characters';
+  end if;
+  if p_reason = 'Other' and v_details is null then
+    raise exception 'Please say what the problem is';
+  end if;
+
+  begin
+    insert into matrimony_reports (reporter_person_id, reported_person_id, reason, details)
+    values (v_me.person_id, v_other.person_id, p_reason, v_details);
+  exception when unique_violation then
+    raise exception 'You have already reported this profile. The admins will look at it.';
+  end;
+end;
+$$;
+
+revoke all on function report_matrimony_profile(uuid, text, text) from public;
+grant execute on function report_matrimony_profile(uuid, text, text) to authenticated;
+
+-- Delete the caller's matrimony profile: photos, interests and matches go
+-- with it (blocks and reports are on people, so they stay). Returns the
+-- photo storage paths for the client to remove from the bucket.
+create or replace function delete_my_matrimony_profile()
+returns text[]
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+  v_paths text[];
+begin
+  select m.id into v_id from matrimony_profiles m join people p on p.id = m.person_id
+  where p.auth_user_id = auth.uid();
+  if v_id is null then
+    raise exception 'You have no matrimony profile';
+  end if;
+
+  select coalesce(array_agg(storage_path), '{}') into v_paths
+  from matrimony_photos where profile_id = v_id;
+  delete from matrimony_profiles where id = v_id;
+  return v_paths;
+end;
+$$;
+
+revoke all on function delete_my_matrimony_profile() from public;
+grant execute on function delete_my_matrimony_profile() to authenticated;
+
+-- ---------------------------------------------------------------- admin
+
+-- Reports for the console, oldest open first / newest resolved first.
+-- open_against = open reports about the same member (repeat offenders).
+create or replace function admin_list_matrimony_reports(
+  p_status text default 'open',
+  p_limit int default 25,
+  p_offset int default 0
+)
+returns table (
+  id uuid,
+  created_at timestamptz,
+  reason text,
+  details text,
+  status text,
+  resolution_note text,
+  resolved_at timestamptz,
+  resolved_by_name text,
+  reporter_person_id uuid,
+  reporter_name text,
+  reported_person_id uuid,
+  reported_name text,
+  reported_member_code text,
+  reported_profile_id uuid,
+  reported_profile_status text,
+  open_against bigint,
+  total_count bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select r.id, r.created_at, r.reason, r.details, r.status, r.resolution_note, r.resolved_at,
+         (select x.full_name from people x where x.auth_user_id = r.resolved_by),
+         rp.id, rp.full_name,
+         tp.id, tp.full_name, tp.member_code,
+         m.id, m.status,
+         (select count(*) from matrimony_reports o
+          where o.reported_person_id = r.reported_person_id and o.status = 'open'),
+         count(*) over ()
+  from matrimony_reports r
+  join people rp on rp.id = r.reporter_person_id
+  join people tp on tp.id = r.reported_person_id
+  left join matrimony_profiles m on m.person_id = tp.id
+  where is_admin()
+    and (p_status is null or r.status = p_status)
+  order by
+    case when r.status = 'open' then r.created_at end asc nulls last,
+    r.resolved_at desc nulls last,
+    r.id asc
+  limit least(greatest(coalesce(p_limit, 25), 1), 50)
+  offset greatest(coalesce(p_offset, 0), 0);
+$$;
+
+revoke all on function admin_list_matrimony_reports(text, int, int) from public;
+grant execute on function admin_list_matrimony_reports(text, int, int) to authenticated;
+
+-- Close a report, optionally with a note (admins only see it). Audited.
+create or replace function admin_resolve_matrimony_report(p_report_id uuid, p_note text default null)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_note text := nullif(trim(p_note), '');
+  v_admin_person_id uuid;
+begin
+  if not is_admin() then
+    raise exception 'Not an admin';
+  end if;
+  update matrimony_reports
+  set status = 'resolved', resolution_note = v_note, resolved_by = auth.uid(), resolved_at = now()
+  where id = p_report_id and status = 'open';
+  if not found then
+    raise exception 'This report is already resolved';
+  end if;
+
+  select id into v_admin_person_id from people where auth_user_id = auth.uid();
+  insert into admin_audit_log (admin_id, action, target_type, target_id, notes)
+  values (v_admin_person_id, 'matrimony_report_resolved', 'matrimony_report', p_report_id, v_note);
+end;
+$$;
+
+revoke all on function admin_resolve_matrimony_report(uuid, text) from public;
+grant execute on function admin_resolve_matrimony_report(uuid, text) to authenticated;
+
+-- Hide a live or paused profile (reason required, shown to the owner) or
+-- unhide it back to live. Hiding suspends the member's matches too (both
+-- sides must be active). Audited.
+create or replace function admin_set_matrimony_hidden(
+  p_profile_id uuid,
+  p_hidden boolean,
+  p_reason text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_reason text := nullif(trim(p_reason), '');
+  v_admin_person_id uuid;
+begin
+  if not is_admin() then
+    raise exception 'Not an admin';
+  end if;
+  if p_hidden and v_reason is null then
+    raise exception 'Please tell the member why';
+  end if;
+
+  if p_hidden then
+    update matrimony_profiles
+    set status = 'hidden', review_note = v_reason, reviewed_at = now(),
+        reviewed_by = auth.uid(), updated_at = now()
+    where id = p_profile_id and status in ('approved', 'paused');
+  else
+    update matrimony_profiles
+    set status = 'approved', review_note = null, reviewed_at = now(),
+        reviewed_by = auth.uid(), updated_at = now()
+    where id = p_profile_id and status = 'hidden';
+  end if;
+  if not found then
+    raise exception '%', case when p_hidden then 'Only a live or paused profile can be hidden'
+                              else 'This profile is not hidden' end;
+  end if;
+
+  select id into v_admin_person_id from people where auth_user_id = auth.uid();
+  insert into admin_audit_log (admin_id, action, target_type, target_id, notes)
+  values (v_admin_person_id, case when p_hidden then 'matrimony_hidden' else 'matrimony_unhidden' end,
+          'matrimony_profile', p_profile_id, v_reason);
+end;
+$$;
+
+revoke all on function admin_set_matrimony_hidden(uuid, boolean, text) from public;
+grant execute on function admin_set_matrimony_hidden(uuid, boolean, text) to authenticated;

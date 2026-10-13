@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
-import { BusinessIcon, EventsIcon } from '../components/NavTabs'
+import { BusinessIcon, EventsIcon, MatrimonyIcon } from '../components/NavTabs'
+import { useMatrimony } from '../context/MatrimonyContext'
 
 type IconProps = { size: number }
 
@@ -18,14 +19,6 @@ function Svg({ size, children }: IconProps & { children: React.ReactNode }) {
     >
       {children}
     </svg>
-  )
-}
-
-function HeartIcon({ size }: IconProps) {
-  return (
-    <Svg size={size}>
-      <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-    </Svg>
   )
 }
 
@@ -67,7 +60,7 @@ type Section = {
 
 const SECTIONS: Section[] = [
   { label: 'Business', blurb: 'Find and list community businesses', icon: BusinessIcon, tone: 'warm', to: '/businesses' },
-  { label: 'Matrimonial', blurb: 'Verified profiles, family-first privacy', icon: HeartIcon, tone: 'warm' },
+  { label: 'Matrimonial', blurb: 'Verified profiles, family-first privacy', icon: MatrimonyIcon, tone: 'warm', to: '/matrimony' },
   { label: 'Career', blurb: 'Jobs, mentors, and internships', icon: TrendIcon, tone: 'cool' },
   { label: 'Incubation club', blurb: 'Pitch ideas, meet mentors', icon: BulbIcon, tone: 'cool' },
   { label: 'Youth club', blurb: 'Meet-ups, sports, volunteering', icon: BoltIcon, tone: 'warm' },
@@ -94,7 +87,16 @@ function SectionBadge({ live }: { live: boolean }) {
   )
 }
 
-function TileBody({ section }: { section: Section }) {
+/** (6b) Accent "N new" pill, in place of Live, when a section has news. */
+function NewBadge({ count }: { count: number }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-[var(--color-accent)] px-2.5 py-0.5 text-xs font-semibold text-white whitespace-nowrap">
+      {count > 9 ? '9+' : count} new
+    </span>
+  )
+}
+
+function TileBody({ section, newCount = 0 }: { section: Section; newCount?: number }) {
   const live = section.to !== undefined
   return (
     <>
@@ -104,7 +106,7 @@ function TileBody({ section }: { section: Section }) {
         >
           <section.icon size={22} />
         </span>
-        <SectionBadge live={live} />
+        {newCount > 0 ? <NewBadge count={newCount} /> : <SectionBadge live={live} />}
       </div>
       <div className="flex flex-col gap-1">
         <h2 className="font-heading text-base font-semibold leading-tight">{section.label}</h2>
@@ -120,6 +122,7 @@ const TILE =
 /** Mobile landing for every community section. Business and Events moved off
  * the bottom bar into here so the bar stays at four tabs (five for admins). */
 export function Explore() {
+  const { badgeCount: matrimonyCount } = useMatrimony()
   return (
     <div className="flex-1 flex flex-col gap-6 px-5 py-8 max-w-2xl mx-auto w-full">
       <div className="flex flex-col gap-2">
@@ -137,7 +140,10 @@ export function Explore() {
                 to={section.to}
                 className={`${TILE} hover:bg-[var(--color-surface-hover)] transition-colors`}
               >
-                <TileBody section={section} />
+                <TileBody
+                  section={section}
+                  newCount={section.to === '/matrimony' ? matrimonyCount : 0}
+                />
               </Link>
             ) : (
               <div className={TILE} aria-disabled="true">

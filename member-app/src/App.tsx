@@ -4,6 +4,7 @@ import { ThemeProvider } from './context/ThemeContext'
 import { ProfileRefreshProvider, useProfileRefresh } from './context/ProfileRefreshContext'
 import { AdminProvider, useAdmin } from './context/AdminContext'
 import { NoticesProvider } from './context/NoticesContext'
+import { MatrimonyProvider } from './context/MatrimonyContext'
 import { NoticeBell } from './components/NoticeBell'
 import { ThemeToggle } from './components/ThemeToggle'
 import { UserMenu } from './components/UserMenu'
@@ -37,6 +38,12 @@ import { AdminAudit } from './routes/admin/AdminAudit'
 import { AdminAdmins } from './routes/admin/AdminAdmins'
 import { AdminNotices } from './routes/admin/AdminNotices'
 import { AdminNoticeEditor } from './routes/admin/AdminNoticeEditor'
+import { AdminMatrimony } from './routes/admin/AdminMatrimony'
+import { AdminMatrimonyDetail } from './routes/admin/AdminMatrimonyDetail'
+import { MatrimonyHome } from './routes/matrimony/MatrimonyHome'
+import { MyMatrimonyProfile } from './routes/matrimony/MyMatrimonyProfile'
+import { MatrimonyInterests } from './routes/matrimony/MatrimonyInterests'
+import { MatrimonyProfilePage } from './routes/matrimony/MatrimonyProfilePage'
 import { PendingApproval } from './routes/PendingApproval'
 import { clearReturnTo } from './lib/returnTo'
 
@@ -97,7 +104,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           )}
         </div>
       </header>
-      <main className={`flex-1 flex flex-col ${showNav ? 'pb-16 sm:pb-0' : ''}`}>{children}</main>
+      <main className={`flex-1 flex flex-col ${showNav ? 'pb-16 lg:pb-0' : ''}`}>{children}</main>
       {showNav && <BottomTabs isAdmin={isAdmin} />}
     </div>
   )
@@ -110,6 +117,7 @@ export default function App() {
         <ProfileRefreshProvider>
           <AdminProvider>
             <NoticesProvider>
+            <MatrimonyProvider>
               <Layout>
                 <Routes>
                   <Route path="/" element={<RootRedirect />} />
@@ -242,6 +250,42 @@ export default function App() {
                       </AuthGate>
                     }
                   />
+                  {/* Phase 6a: matrimony. Reached from the Explore tile, not
+                      the nav. */}
+                  <Route
+                    path="/matrimony"
+                    element={
+                      <AuthGate key="matrimony" requireComplete>
+                        <MatrimonyHome />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/matrimony/profile"
+                    element={
+                      <AuthGate key="matrimony-profile" requireComplete>
+                        <MyMatrimonyProfile />
+                      </AuthGate>
+                    }
+                  />
+                  {/* (6b) /matrimony/interests is a static segment, so it
+                      outranks /matrimony/:id. */}
+                  <Route
+                    path="/matrimony/interests"
+                    element={
+                      <AuthGate key="matrimony-interests" requireComplete>
+                        <MatrimonyInterests />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/matrimony/:id"
+                    element={
+                      <AuthGate key="matrimony-detail" requireComplete>
+                        <MatrimonyProfilePage />
+                      </AuthGate>
+                    }
+                  />
                   {/* (5b-1) The admin console. AdminLayout does the admin gate
                       and renders the section nav around each page. allowPending:
                       an admin who is themselves still pending (or seeded by hand
@@ -266,6 +310,8 @@ export default function App() {
                     <Route path="notices" element={<AdminNotices />} />
                     <Route path="notices/new" element={<AdminNoticeEditor key="new" />} />
                     <Route path="notices/:id" element={<AdminNoticeEditor />} />
+                    <Route path="matrimony" element={<AdminMatrimony />} />
+                    <Route path="matrimony/:id" element={<AdminMatrimonyDetail />} />
                     <Route path="audit" element={<AdminAudit />} />
                     <Route path="admins" element={<AdminAdmins />} />
                     <Route
@@ -275,6 +321,7 @@ export default function App() {
                   </Route>
                 </Routes>
               </Layout>
+            </MatrimonyProvider>
             </NoticesProvider>
           </AdminProvider>
         </ProfileRefreshProvider>

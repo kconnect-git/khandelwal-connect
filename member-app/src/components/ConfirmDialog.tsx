@@ -20,6 +20,10 @@ type ConfirmDialogProps = {
     placeholder?: string
     /** Block confirming until something is typed. */
     required?: boolean
+    /** (6b) Cap the textarea; a counter is shown. */
+    maxLength?: number
+    /** (6b) Replaces the default hint under a required prompt. */
+    hint?: string
   }
   confirmLabel: string
   /** Paint the confirm button in the accent colour (approve, publish...). */
@@ -94,12 +98,18 @@ export function ConfirmDialog({
               value={value}
               onChange={(event) => setValue(event.target.value)}
               placeholder={prompt.placeholder}
+              maxLength={prompt.maxLength}
               rows={4}
               className="mt-1.5 w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
             />
-            {prompt.required && (
+            {(prompt.required || prompt.hint) && (
               <span className="mt-1 block text-xs text-[var(--color-text-muted)]">
-                The member sees this, so say what they need to do.
+                {prompt.hint ?? 'The member sees this, so say what they need to do.'}
+              </span>
+            )}
+            {prompt.maxLength && (
+              <span className="mt-1 block text-right text-xs text-[var(--color-text-muted)]">
+                {value.length} / {prompt.maxLength}
               </span>
             )}
           </label>

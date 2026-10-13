@@ -238,6 +238,11 @@ export type AdminOverviewStats = {
   businesses_hidden: number
   /** (0022) published and not expired */
   notices_active: number
+  /** (0023) */
+  matrimony_pending: number
+  matrimony_approved: number
+  /** (0025) */
+  matrimony_reports_open: number
 }
 
 // ================================================================
@@ -286,6 +291,250 @@ export type AdminNoticeRow = {
   /** Approved members the audience matches right now. */
   reach_count: number
   read_count: number
+  total_count: number
+}
+
+// ================================================================
+// Phase 6a (0023): matrimony profiles
+// ================================================================
+
+export type MatrimonyStatus =
+  | 'draft'
+  | 'pending'
+  | 'changes_requested'
+  | 'approved'
+  | 'rejected'
+  /** (0025) owner, out of browse */
+  | 'paused'
+  /** (0025) admin, with a reason in review_note */
+  | 'hidden'
+
+/** A matrimony_profiles row. The opt-in fields (diet ... nakshatra) are
+ *  null when the member chose not to disclose them. */
+export type MatrimonyProfileRow = {
+  id: string
+  person_id: string
+  status: MatrimonyStatus
+  height_cm: number | null
+  about_me: string | null
+  about_family: string | null
+  partner_expectations: string | null
+  diet: string | null
+  smoking: string | null
+  drinking: string | null
+  /** 'HH:MM:SS' */
+  birth_time: string | null
+  birth_place: string | null
+  rashi: string | null
+  nakshatra: string | null
+  review_note: string | null
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type MatrimonyPhoto = {
+  id: string
+  storage_path: string
+  /** 1 = main photo. */
+  position: number
+}
+
+/** The people fields a matrimony profile shows but doesn't own. */
+export type MatrimonyBasics = {
+  first_name: string | null
+  last_name: string | null
+  full_name: string
+  gender: string | null
+  dob: string | null
+  gotra: string | null
+  current_city: string | null
+  current_state: string | null
+  education: string | null
+  occupation_type: string | null
+  marital_status: string | null
+}
+
+/** get_my_matrimony_profile */
+export type MyMatrimony = {
+  basics: MatrimonyBasics
+  /** Why the caller can't submit, or null if they can. */
+  ineligible_reason: string | null
+  profile: MatrimonyProfileRow | null
+  photos: MatrimonyPhoto[]
+}
+
+/** One row of admin_list_matrimony_profiles. */
+export type AdminMatrimonyRow = {
+  id: string
+  person_id: string
+  full_name: string
+  member_code: string | null
+  gender: string | null
+  age: number | null
+  current_city: string | null
+  current_state: string | null
+  gotra: string | null
+  status: MatrimonyStatus
+  photo_count: number
+  ineligible_reason: string | null
+  review_note: string | null
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewed_by_name: string | null
+  total_count: number
+}
+
+/** admin_get_matrimony_profile */
+export type AdminMatrimonyDetail = MatrimonyProfileRow &
+  Omit<MatrimonyBasics, 'first_name' | 'last_name'> & {
+    member_code: string | null
+    member_status: MemberStatus
+    ineligible_reason: string | null
+    reviewed_by_name: string | null
+    photos: MatrimonyPhoto[]
+  }
+
+// ================================================================
+// Phase 6b (0024): matrimony browse + interests
+// ================================================================
+
+/** Where the caller stands with another profile. 'no_response' = they
+ *  declined the caller's interest (never shown as a decline). */
+export type MatrimonyInterestState = 'none' | 'sent' | 'received' | 'matched' | 'no_response'
+
+/** One row of list_matrimony_profiles: card fields only. */
+export type MatrimonyCardRow = {
+  id: string
+  first_name: string | null
+  last_initial: string | null
+  age: number | null
+  current_city: string | null
+  current_state: string | null
+  gotra: string | null
+  education: string | null
+  occupation_type: string | null
+  height_cm: number | null
+  about_me: string | null
+  interest_state: MatrimonyInterestState
+  total_count: number
+}
+
+/** Unlocked only on a mutual match. */
+export type MatrimonyContact = {
+  full_name: string
+  father_name: string | null
+  mother_name: string | null
+  native_place: string | null
+  email: string | null
+  /** null when the member hides their number (mobile_hidden). */
+  mobile_number: string | null
+  mobile_hidden: boolean
+  photo_paths: string[]
+}
+
+/** get_matrimony_profile */
+export type MatrimonyProfileView = Pick<
+  MatrimonyProfileRow,
+  | 'id'
+  | 'height_cm'
+  | 'about_me'
+  | 'about_family'
+  | 'partner_expectations'
+  | 'diet'
+  | 'smoking'
+  | 'drinking'
+  | 'birth_time'
+  | 'birth_place'
+  | 'rashi'
+  | 'nakshatra'
+> & {
+  first_name: string | null
+  last_initial: string | null
+  age: number | null
+  gender: string | null
+  current_city: string | null
+  current_state: string | null
+  gotra: string | null
+  education: string | null
+  occupation_type: string | null
+  interest_state: MatrimonyInterestState
+  outgoing_interest_id: string | null
+  incoming_interest: { id: string; message: string | null; created_at: string } | null
+  /** (0025) The accepted interest, for un-matching. */
+  match_interest_id: string | null
+  contact: MatrimonyContact | null
+}
+
+export type MatrimonyBox = 'received' | 'sent' | 'matches'
+
+/** One row of list_my_interests. */
+export type MatrimonyInterestRow = {
+  interest_id: string
+  profile_id: string
+  first_name: string | null
+  last_initial: string | null
+  /** Only for matches. */
+  full_name: string | null
+  age: number | null
+  current_city: string | null
+  current_state: string | null
+  gotra: string | null
+  education: string | null
+  occupation_type: string | null
+  height_cm: number | null
+  status: 'pending' | 'accepted' | 'no_response'
+  message: string | null
+  created_at: string
+  responded_at: string | null
+  is_new: boolean
+  /** Only for matches. */
+  main_photo_path: string | null
+}
+
+export type MatrimonyFilterOptions = { states: string[]; cities: string[] }
+
+// ================================================================
+// Phase 6c (0025): matrimony safety
+// ================================================================
+
+export type MatrimonyReportReason =
+  | 'Fake profile'
+  | 'Inappropriate content'
+  | 'Already married'
+  | 'Harassment'
+  | 'Other'
+
+/** One row of list_my_matrimony_blocks. */
+export type MatrimonyBlockRow = {
+  person_id: string
+  first_name: string | null
+  last_initial: string | null
+  created_at: string
+}
+
+/** One row of admin_list_matrimony_reports. */
+export type AdminMatrimonyReportRow = {
+  id: string
+  created_at: string
+  reason: MatrimonyReportReason
+  details: string | null
+  status: 'open' | 'resolved'
+  resolution_note: string | null
+  resolved_at: string | null
+  resolved_by_name: string | null
+  reporter_person_id: string
+  reporter_name: string
+  reported_person_id: string
+  reported_name: string
+  reported_member_code: string | null
+  /** null once the reported member deleted their matrimony profile. */
+  reported_profile_id: string | null
+  reported_profile_status: MatrimonyStatus | null
+  /** Open reports about the same member, this one included. */
+  open_against: number
   total_count: number
 }
 
@@ -626,6 +875,147 @@ export type Database = {
       }
       admin_delete_notice: {
         Args: { p_notice_id: string }
+        Returns: void
+      }
+      // (0023) matrimony profiles
+      get_my_matrimony_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: MyMatrimony | null
+      }
+      save_my_matrimony_profile: {
+        Args: {
+          p_height_cm: number | null
+          p_about_me: string | null
+          p_about_family: string | null
+          p_partner_expectations: string | null
+          p_diet?: string | null
+          p_smoking?: string | null
+          p_drinking?: string | null
+          p_birth_time?: string | null
+          p_birth_place?: string | null
+          p_rashi?: string | null
+          p_nakshatra?: string | null
+        }
+        Returns: string
+      }
+      submit_matrimony_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: void
+      }
+      add_matrimony_photo: {
+        Args: { p_storage_path: string }
+        Returns: string
+      }
+      remove_matrimony_photo: {
+        Args: { p_photo_id: string }
+        Returns: string
+      }
+      set_main_matrimony_photo: {
+        Args: { p_photo_id: string }
+        Returns: void
+      }
+      admin_list_matrimony_profiles: {
+        Args: {
+          p_status?: string | null
+          p_search?: string | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: AdminMatrimonyRow[]
+      }
+      admin_get_matrimony_profile: {
+        Args: { p_profile_id: string }
+        Returns: AdminMatrimonyDetail | null
+      }
+      admin_set_matrimony_status: {
+        Args: { p_profile_id: string; p_status: string; p_note?: string | null }
+        Returns: void
+      }
+      // (0024) matrimony browse + interests
+      list_matrimony_profiles: {
+        Args: {
+          p_age_min?: number | null
+          p_age_max?: number | null
+          p_state?: string | null
+          p_city?: string | null
+          p_education?: string | null
+          p_occupation?: string | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: MatrimonyCardRow[]
+      }
+      matrimony_filter_options: {
+        Args: Record<PropertyKey, never>
+        Returns: MatrimonyFilterOptions
+      }
+      get_matrimony_profile: {
+        Args: { p_profile_id: string }
+        Returns: MatrimonyProfileView | null
+      }
+      express_interest: {
+        Args: { p_profile_id: string; p_message?: string | null }
+        Returns: 'sent' | 'matched'
+      }
+      withdraw_interest: {
+        Args: { p_interest_id: string }
+        Returns: void
+      }
+      respond_interest: {
+        Args: { p_interest_id: string; p_accept: boolean }
+        Returns: void
+      }
+      list_my_interests: {
+        Args: { p_box: string }
+        Returns: MatrimonyInterestRow[]
+      }
+      mark_interests_seen: {
+        Args: { p_box: string }
+        Returns: void
+      }
+      matrimony_badge_count: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      // (0025) matrimony safety
+      set_matrimony_paused: {
+        Args: { p_paused: boolean }
+        Returns: void
+      }
+      end_matrimony_match: {
+        Args: { p_interest_id: string }
+        Returns: void
+      }
+      block_matrimony_profile: {
+        Args: { p_profile_id: string }
+        Returns: void
+      }
+      unblock_matrimony_person: {
+        Args: { p_person_id: string }
+        Returns: void
+      }
+      list_my_matrimony_blocks: {
+        Args: Record<PropertyKey, never>
+        Returns: MatrimonyBlockRow[]
+      }
+      report_matrimony_profile: {
+        Args: { p_profile_id: string; p_reason: string; p_details?: string | null }
+        Returns: void
+      }
+      delete_my_matrimony_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
+      }
+      admin_list_matrimony_reports: {
+        Args: { p_status?: string | null; p_limit?: number; p_offset?: number }
+        Returns: AdminMatrimonyReportRow[]
+      }
+      admin_resolve_matrimony_report: {
+        Args: { p_report_id: string; p_note?: string | null }
+        Returns: void
+      }
+      admin_set_matrimony_hidden: {
+        Args: { p_profile_id: string; p_hidden: boolean; p_reason?: string | null }
         Returns: void
       }
       complete_onboarding_step3: {
