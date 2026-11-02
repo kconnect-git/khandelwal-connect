@@ -174,7 +174,8 @@ const MATRIMONY_TO = '/matrimony'
 const TABS: Tab[] = [
   HOME_TAB,
   DIRECTORY_TAB,
-  { to: '/businesses', label: 'Businesses', icon: BusinessIcon },
+  // (10.1) Lands on the KC Business hub; the directory is one tile in.
+  { to: '/business', label: 'Businesses', icon: BusinessIcon },
   { to: '/events', label: 'Events', icon: EventsIcon },
   // (6b) Its own header link on desktop, like Businesses / Events.
   { to: MATRIMONY_TO, label: 'Matrimony', icon: MatrimonyIcon },
@@ -201,14 +202,14 @@ function tabsFor(isAdmin: boolean, tabs: Tab[] = TABS): Tab[] {
 
 function isActive(pathname: string, to: string): boolean {
   // /directory also covers /members/:id -- a member profile is reached from
-  // the directory, so the tab stays lit there. /businesses covers its own
-  // /businesses/:id via the plain prefix match.
+  // the directory, so the tab stays lit there. /business covers the hub,
+  // /businesses and /businesses/:id via the plain prefix match.
   if (to === '/directory') return pathname.startsWith('/directory') || pathname.startsWith('/members')
   // Every /admin/* page belongs to the one Admin tab.
   if (to === ADMIN_TAB.to) return pathname.startsWith('/admin')
   // Explore stays lit inside the sections it leads to.
   if (to === EXPLORE_TAB.to) {
-    return ['/explore', '/businesses', '/events', MATRIMONY_TO].some((p) => pathname.startsWith(p))
+    return ['/explore', '/business', '/events', MATRIMONY_TO].some((p) => pathname.startsWith(p))
   }
   return pathname.startsWith(to)
 }

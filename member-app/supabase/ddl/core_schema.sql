@@ -467,6 +467,15 @@ create table businesses (
   hidden_reason text,
   hidden_by uuid references auth.users(id),
   hidden_at timestamptz,
+  -- (0027) Admin-set "Verified": an admin actually checked the business.
+  -- Not listing approval. Same write protection as the hidden columns; only
+  -- admin_set_business_verified changes them.
+  is_verified boolean not null default false,
+  verified_by uuid references auth.users(id),
+  verified_at timestamptz,
+  -- (0028) What the listing offers, shown as chips on the detail page. Replaces
+  -- primary_product (copied in by 0028), which is no longer edited or read.
+  products text[] not null default '{}',
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -484,11 +493,70 @@ alter table businesses
 
 create index businesses_owner_id_idx on businesses (owner_id);
 
+-- (0028) <= 20 products, each 1-60 characters once trimmed.
+create or replace function business_products_valid(p_products text[])
+returns boolean
+language sql
+immutable
+as $$
+  select coalesce(cardinality(p_products), 0) <= 20
+     and not exists (select 1 from unnest(p_products) x
+                     where x is null or length(trim(x)) = 0 or length(trim(x)) > 60);
+$$;
+
+alter table businesses
+  add constraint businesses_products_check check (business_products_valid(products));
+
+-- (0028) Phase 10.3 tables, all RPC-only (RLS on, no policies; see
+-- enable_rls.sql). Defined here because get_business / list_businesses
+-- read business_saves.
+create table business_saves (
+  person_id uuid not null references people(id) on delete cascade,
+  business_id uuid not null references businesses(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (person_id, business_id)
+);
+
+create table business_reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_person_id uuid not null references people(id) on delete cascade,
+  business_id uuid not null references businesses(id) on delete cascade,
+  reason text not null check (reason in ('Fake or misleading', 'Wrong contact details',
+                                          'Inappropriate content', 'Not a member''s business',
+                                          'Other')),
+  details text check (details is null or length(details) <= 1000),
+  status text not null default 'open' check (status in ('open', 'resolved')),
+  resolution_note text,
+  resolved_by uuid references auth.users(id),
+  resolved_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create unique index business_reports_one_open_idx
+  on business_reports (reporter_person_id, business_id) where status = 'open';
+create index business_reports_status_idx on business_reports (status, created_at);
+
+create table business_activity (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses(id) on delete cascade,
+  viewer_person_id uuid not null references people(id) on delete cascade,
+  kind text not null check (kind in ('view', 'call', 'whatsapp')),
+  day date not null,
+  created_at timestamptz not null default now()
+);
+
+create unique index business_activity_once_a_day_idx
+  on business_activity (business_id, viewer_person_id, kind, day);
+create index business_activity_business_day_idx
+  on business_activity (business_id, day);
+
+
 -- (0021) Same idea as people_protect_review_columns: `own business update`
 -- is column-blind, so without this an owner could un-hide their own listing
 -- through PostgREST. On insert the columns are reset rather than refused --
 -- a fresh listing is never hidden, and createBusiness() shouldn't have to
--- know these columns exist.
+-- know these columns exist. (0027) The verified columns get the same
+-- treatment.
 create or replace function businesses_protect_moderation_columns()
 returns trigger
 language plpgsql
@@ -500,10 +568,20 @@ begin
       new.hidden_reason := null;
       new.hidden_by := null;
       new.hidden_at := null;
-    elsif (new.is_hidden, new.hidden_reason, new.hidden_by, new.hidden_at)
-          is distinct from
-          (old.is_hidden, old.hidden_reason, old.hidden_by, old.hidden_at) then
-      raise exception 'Only an admin can hide or unhide a listing';
+      new.is_verified := false;
+      new.verified_by := null;
+      new.verified_at := null;
+    else
+      if (new.is_hidden, new.hidden_reason, new.hidden_by, new.hidden_at)
+         is distinct from
+         (old.is_hidden, old.hidden_reason, old.hidden_by, old.hidden_at) then
+        raise exception 'Only an admin can hide or unhide a listing';
+      end if;
+      if (new.is_verified, new.verified_by, new.verified_at)
+         is distinct from
+         (old.is_verified, old.verified_by, old.verified_at) then
+        raise exception 'Only an admin can verify a listing';
+      end if;
     end if;
   end if;
   return new;
@@ -1249,14 +1327,17 @@ grant execute on function directory_filter_options() to authenticated;
 
 -- Paginated listing with the owner's directory-tier fields joined in. Same
 -- total_count window-function shape as list_directory (0010). Only
--- businesses whose owner has completed onboarding appear.
+-- businesses whose owner has completed onboarding appear. (0026) p_search
+-- also matches category, city, state, brand, primary product and description,
+-- for the KC Business hub's search box.
 create or replace function list_businesses(
   p_search text default null,
   p_category text default null,
   p_city text default null,
   p_state text default null,
   p_limit int default 20,
-  p_offset int default 0
+  p_offset int default 0,
+  p_saved_only boolean default false
 )
 returns table (
   id uuid,
@@ -1268,6 +1349,7 @@ returns table (
   contact_phone text,
   website text,
   logo_url text,
+  is_verified boolean,
   owner_id uuid,
   owner_name text,
   owner_photo_url text,
@@ -1280,7 +1362,7 @@ security definer
 set search_path = public
 as $$
   select b.id, b.name, b.category, b.description, b.city, b.state,
-         b.contact_phone, b.website, b.logo_url,
+         b.contact_phone, b.website, b.logo_url, b.is_verified,
          p.id as owner_id, p.full_name as owner_name, p.profile_photo_url as owner_photo_url,
          p.member_code as owner_member_code,
          count(*) over () as total_count
@@ -1291,17 +1373,27 @@ as $$
     and not b.is_hidden
     and (p_search is null or length(trim(p_search)) = 0
          or b.name ilike '%' || p_search || '%'
-         or p.full_name ilike '%' || p_search || '%')
+         or p.full_name ilike '%' || p_search || '%'
+         or b.category ilike '%' || p_search || '%'
+         or b.city ilike '%' || p_search || '%'
+         or b.state ilike '%' || p_search || '%'
+         or b.brand_name ilike '%' || p_search || '%'
+         or array_to_string(b.products, ' ') ilike '%' || p_search || '%'
+         or b.description ilike '%' || p_search || '%')
     and (p_category is null or b.category = p_category)
     and (p_city is null or b.city ilike p_city)
     and (p_state is null or b.state ilike p_state)
+    and (not coalesce(p_saved_only, false)
+         or exists (select 1 from business_saves s
+                    join people me on me.id = s.person_id
+                    where me.auth_user_id = auth.uid() and s.business_id = b.id))
   order by b.name asc, b.id asc
   limit least(greatest(coalesce(p_limit, 20), 1), 50)
   offset greatest(coalesce(p_offset, 0), 0);
 $$;
 
-revoke all on function list_businesses(text, text, text, text, int, int) from public;
-grant execute on function list_businesses(text, text, text, text, int, int) to authenticated;
+revoke all on function list_businesses(text, text, text, text, int, int, boolean) from public;
+grant execute on function list_businesses(text, text, text, text, int, int, boolean) to authenticated;
 
 -- One listing: the card columns plus the (0017) detail columns. Zero rows
 -- if unknown or the owner hasn't completed onboarding.
@@ -1320,12 +1412,14 @@ returns table (
   address_line1 text,
   address_line2 text,
   business_email text,
-  primary_product text,
   business_type text,
   facebook_url text,
   instagram_url text,
   linkedin_url text,
   youtube_url text,
+  products text[],
+  is_verified boolean,
+  is_saved boolean,
   owner_id uuid,
   owner_name text,
   owner_photo_url text,
@@ -1339,8 +1433,12 @@ as $$
   select b.id, b.name, b.category, b.description, b.city, b.state,
          b.contact_phone, b.website, b.logo_url,
          b.brand_name, b.address_line1, b.address_line2, b.business_email,
-         b.primary_product, b.business_type,
+         b.business_type,
          b.facebook_url, b.instagram_url, b.linkedin_url, b.youtube_url,
+         b.products, b.is_verified,
+         exists (select 1 from business_saves s
+                 join people me on me.id = s.person_id
+                 where me.auth_user_id = auth.uid() and s.business_id = b.id),
          p.id, p.full_name, p.profile_photo_url, p.member_code
   from businesses b
   join people p on p.id = b.owner_id
@@ -2568,6 +2666,9 @@ as $$
            when 'matrimony_report' then (select t.full_name from matrimony_reports r
                                          join people t on t.id = r.reported_person_id
                                          where r.id = a.target_id)
+           when 'business_report' then (select t.name from business_reports r
+                                        join businesses t on t.id = r.business_id
+                                        where r.id = a.target_id)
          end,
          a.notes, a.admin_id, ap.full_name,
          count(*) over ()
@@ -2609,7 +2710,8 @@ as $$
                        where status = 'published' and (expires_at is null or expires_at > now())),
     'matrimony_pending', (select count(*) from matrimony_profiles where status = 'pending'),
     'matrimony_approved', (select count(*) from matrimony_profiles where status = 'approved'),
-    'matrimony_reports_open', (select count(*) from matrimony_reports where status = 'open')
+    'matrimony_reports_open', (select count(*) from matrimony_reports where status = 'open'),
+    'business_reports_open', (select count(*) from business_reports where status = 'open')
   )
   where is_admin();
 $$;
@@ -2642,6 +2744,8 @@ returns table (
   is_hidden boolean,
   hidden_reason text,
   hidden_at timestamptz,
+  is_verified boolean,
+  verified_at timestamptz,
   owner_id uuid,
   owner_name text,
   owner_member_code text,
@@ -2656,6 +2760,7 @@ set search_path = public
 as $$
   select b.id, b.name, b.brand_name, b.category, b.city, b.state, b.logo_url,
          b.is_hidden, b.hidden_reason, b.hidden_at,
+         b.is_verified, b.verified_at,
          p.id, p.full_name, p.member_code, p.member_status,
          b.created_at,
          count(*) over ()
@@ -2733,6 +2838,269 @@ $$;
 
 revoke all on function admin_set_business_hidden(uuid, boolean, text) from public;
 grant execute on function admin_set_business_hidden(uuid, boolean, text) to authenticated;
+
+-- (0027)
+-- Verify or un-verify a listing. Any admin. The optional note ("GST checked",
+-- "visited the shop") goes to the audit log only; members just see the tag.
+create or replace function admin_set_business_verified(
+  p_business_id uuid,
+  p_verified boolean,
+  p_note text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_business businesses%rowtype;
+  v_admin_person_id uuid;
+begin
+  if not is_admin() then
+    raise exception 'Not an admin';
+  end if;
+  if p_verified is null then
+    raise exception 'Say whether to verify the listing or remove verification';
+  end if;
+
+  select * into v_business from businesses where id = p_business_id for update;
+  if not found then
+    raise exception 'Listing not found';
+  end if;
+  if v_business.is_verified = p_verified then
+    raise exception 'This listing is already %', case when p_verified then 'verified' else 'not verified' end;
+  end if;
+
+  if p_verified then
+    update businesses
+    set is_verified = true, verified_by = auth.uid(), verified_at = now(), updated_at = now()
+    where id = p_business_id;
+  else
+    update businesses
+    set is_verified = false, verified_by = null, verified_at = null, updated_at = now()
+    where id = p_business_id;
+  end if;
+
+  select id into v_admin_person_id from people where auth_user_id = auth.uid();
+  insert into admin_audit_log (admin_id, action, target_type, target_id, notes)
+  values (v_admin_person_id,
+          case when p_verified then 'business_verified' else 'business_unverified' end,
+          'business', p_business_id, nullif(trim(p_note), ''));
+end;
+$$;
+
+revoke all on function admin_set_business_verified(uuid, boolean, text) from public;
+grant execute on function admin_set_business_verified(uuid, boolean, text) to authenticated;
+
+-- ================================================================
+-- Phase 10.3 (0028): business saves, reports, activity RPCs (the tables
+-- sit next to businesses, ahead of get_business / list_businesses)
+-- ================================================================
+
+-- Save or unsave a listing the caller can see. Idempotent.
+create or replace function set_business_saved(p_business_id uuid, p_saved boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid;
+begin
+  select id into v_me from people where auth_user_id = auth.uid();
+  if v_me is null then
+    raise exception 'Not signed in';
+  end if;
+
+  if coalesce(p_saved, false) then
+    if not exists (select 1 from get_business(p_business_id)) then
+      raise exception 'Listing not found';
+    end if;
+    insert into business_saves (person_id, business_id)
+    values (v_me, p_business_id)
+    on conflict do nothing;
+  else
+    delete from business_saves where person_id = v_me and business_id = p_business_id;
+  end if;
+end;
+$$;
+
+revoke all on function set_business_saved(uuid, boolean) from public;
+grant execute on function set_business_saved(uuid, boolean) to authenticated;
+
+-- Report a listing the caller can see and doesn't own. One open report per
+-- reporter per listing.
+create or replace function report_business(
+  p_business_id uuid,
+  p_reason text,
+  p_details text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid;
+  v_details text := nullif(trim(p_details), '');
+begin
+  select id into v_me from people where auth_user_id = auth.uid();
+  if v_me is null then
+    raise exception 'Not signed in';
+  end if;
+  if not exists (select 1 from get_business(p_business_id)) then
+    raise exception 'Listing not found';
+  end if;
+  if exists (select 1 from businesses where id = p_business_id and owner_id = v_me) then
+    raise exception 'You can''t report your own listing';
+  end if;
+  if p_reason is null or p_reason not in ('Fake or misleading', 'Wrong contact details',
+                                          'Inappropriate content', 'Not a member''s business',
+                                          'Other') then
+    raise exception 'Please pick a reason';
+  end if;
+  if v_details is not null and length(v_details) > 1000 then
+    raise exception 'Keep the details to 1000 characters';
+  end if;
+  if p_reason = 'Other' and v_details is null then
+    raise exception 'Please say what the problem is';
+  end if;
+
+  begin
+    insert into business_reports (reporter_person_id, business_id, reason, details)
+    values (v_me, p_business_id, p_reason, v_details);
+  exception when unique_violation then
+    raise exception 'You have already reported this listing. The admins will look at it.';
+  end;
+end;
+$$;
+
+revoke all on function report_business(uuid, text, text) from public;
+grant execute on function report_business(uuid, text, text) to authenticated;
+
+-- Record a view / Call tap / WhatsApp tap. Quietly does nothing for the
+-- owner, an invisible listing or a repeat on the same IST day, so the page
+-- never fails because of tracking.
+create or replace function log_business_activity(p_business_id uuid, p_kind text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid;
+begin
+  if p_kind is null or p_kind not in ('view', 'call', 'whatsapp') then
+    return;
+  end if;
+  select id into v_me from people where auth_user_id = auth.uid();
+  if v_me is null then
+    return;
+  end if;
+  if not exists (select 1 from get_business(p_business_id) g where g.owner_id <> v_me) then
+    return;
+  end if;
+
+  insert into business_activity (business_id, viewer_person_id, kind, day)
+  values (p_business_id, v_me, p_kind, (now() at time zone 'Asia/Kolkata')::date)
+  on conflict do nothing;
+end;
+$$;
+
+revoke all on function log_business_activity(uuid, text) from public;
+grant execute on function log_business_activity(uuid, text) to authenticated;
+
+-- ================================================================
+-- admin: reports
+-- ================================================================
+
+-- Reports for the console, oldest open first / newest resolved first.
+-- open_against = open reports on the same listing (repeat complaints).
+create or replace function admin_list_business_reports(
+  p_status text default 'open',
+  p_limit int default 25,
+  p_offset int default 0
+)
+returns table (
+  id uuid,
+  created_at timestamptz,
+  reason text,
+  details text,
+  status text,
+  resolution_note text,
+  resolved_at timestamptz,
+  resolved_by_name text,
+  reporter_person_id uuid,
+  reporter_name text,
+  business_id uuid,
+  business_name text,
+  business_is_hidden boolean,
+  owner_id uuid,
+  owner_name text,
+  owner_member_code text,
+  open_against bigint,
+  total_count bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select r.id, r.created_at, r.reason, r.details, r.status, r.resolution_note, r.resolved_at,
+         (select x.full_name from people x where x.auth_user_id = r.resolved_by),
+         rp.id, rp.full_name,
+         b.id, b.name, b.is_hidden,
+         op.id, op.full_name, op.member_code,
+         (select count(*) from business_reports o
+          where o.business_id = r.business_id and o.status = 'open'),
+         count(*) over ()
+  from business_reports r
+  join people rp on rp.id = r.reporter_person_id
+  join businesses b on b.id = r.business_id
+  join people op on op.id = b.owner_id
+  where is_admin()
+    and (p_status is null or r.status = p_status)
+  order by
+    case when r.status = 'open' then r.created_at end asc nulls last,
+    r.resolved_at desc nulls last,
+    r.id asc
+  limit least(greatest(coalesce(p_limit, 25), 1), 50)
+  offset greatest(coalesce(p_offset, 0), 0);
+$$;
+
+revoke all on function admin_list_business_reports(text, int, int) from public;
+grant execute on function admin_list_business_reports(text, int, int) to authenticated;
+
+-- Close a report, optionally with a note (admins only see it). Audited.
+create or replace function admin_resolve_business_report(p_report_id uuid, p_note text default null)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_note text := nullif(trim(p_note), '');
+  v_admin_person_id uuid;
+begin
+  if not is_admin() then
+    raise exception 'Not an admin';
+  end if;
+  update business_reports
+  set status = 'resolved', resolution_note = v_note, resolved_by = auth.uid(), resolved_at = now()
+  where id = p_report_id and status = 'open';
+  if not found then
+    raise exception 'This report is already resolved';
+  end if;
+
+  select id into v_admin_person_id from people where auth_user_id = auth.uid();
+  insert into admin_audit_log (admin_id, action, target_type, target_id, notes)
+  values (v_admin_person_id, 'business_report_resolved', 'business_report', p_report_id, v_note);
+end;
+$$;
+
+revoke all on function admin_resolve_business_report(uuid, text) from public;
+grant execute on function admin_resolve_business_report(uuid, text) to authenticated;
+
 
 -- Everyone in `admins`, with their member identity where they have one (a
 -- hand-seeded admin may not). Any admin may read it -- moderators get a

@@ -107,5 +107,9 @@ alter table matrimony_interests enable row level security;
 -- (0025) blocks and reports, same model.
 alter table matrimony_blocks enable row level security;
 alter table matrimony_reports enable row level security;
+-- (0028) Phase 10.3, RPC-only.
+alter table business_saves enable row level security;
+alter table business_reports enable row level security;
+alter table business_activity enable row level security;
 
 -- everything else stays fully closed until you write real policies for it

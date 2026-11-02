@@ -4,6 +4,7 @@ import type {
   AdminMemberDetail,
   AdminMemberExportRow,
   AdminMemberFilters,
+  AdminBusinessReportRow,
   AdminBusinessRow,
   AdminListRow,
   AdminMemberRow,
@@ -220,6 +221,9 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   members_export: 'Exported members CSV',
   business_hidden: 'Hid business listing',
   business_unhidden: 'Unhid business listing',
+  business_verified: 'Verified business listing',
+  business_unverified: 'Removed business verification',
+  business_report_resolved: 'Resolved business report',
   admin_granted: 'Made admin',
   admin_role_changed: 'Changed admin role',
   admin_revoked: 'Removed admin',
@@ -250,6 +254,7 @@ export function auditTargetHref(row: Pick<AuditLogRow, 'target_type' | 'target_i
   if (row.target_type === 'notice') return `/admin/notices/${row.target_id}`
   if (row.target_type === 'matrimony_profile') return `/admin/matrimony/${row.target_id}`
   if (row.target_type === 'matrimony_report') return '/admin/matrimony?status=reports'
+  if (row.target_type === 'business_report') return '/admin/businesses?view=reports'
   return null
 }
 
@@ -295,6 +300,43 @@ export async function adminSetBusinessHidden(
     p_business_id: businessId,
     p_hidden: hidden,
     p_reason: reason?.trim() || null,
+  })
+  if (error) throw error
+}
+
+/** (0027) The note is for the audit log only; members just see the tag. */
+export async function adminSetBusinessVerified(
+  businessId: string,
+  verified: boolean,
+  note?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_business_verified', {
+    p_business_id: businessId,
+    p_verified: verified,
+    p_note: note?.trim() || null,
+  })
+  if (error) throw error
+}
+
+/** (0028) Same shape as the matrimony report list. */
+export async function adminListBusinessReports(params: {
+  status: 'open' | 'resolved'
+  limit?: number
+  offset?: number
+}): Promise<AdminBusinessReportRow[]> {
+  const { data, error } = await supabase.rpc('admin_list_business_reports', {
+    p_status: params.status,
+    p_limit: params.limit ?? 25,
+    p_offset: params.offset ?? 0,
+  })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function adminResolveBusinessReport(reportId: string, note: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_resolve_business_report', {
+    p_report_id: reportId,
+    p_note: note.trim() || null,
   })
   if (error) throw error
 }

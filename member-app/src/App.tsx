@@ -20,6 +20,7 @@ import { Dashboard } from './routes/Dashboard'
 import { Profile } from './routes/Profile'
 import { Directory } from './routes/Directory'
 import { MemberProfile } from './routes/MemberProfile'
+import { BusinessHub } from './routes/BusinessHub'
 import { Businesses } from './routes/Businesses'
 import { BusinessDetail } from './routes/BusinessDetail'
 import { Events } from './routes/Events'
@@ -197,6 +198,15 @@ export default function App() {
                     element={
                       <AuthGate key="explore" requireComplete>
                         <Explore />
+                      </AuthGate>
+                    }
+                  />
+                  {/* Phase 10.1: the KC Business hub, in front of the directory. */}
+                  <Route
+                    path="/business"
+                    element={
+                      <AuthGate key="business-hub" requireComplete>
+                        <BusinessHub />
                       </AuthGate>
                     }
                   />

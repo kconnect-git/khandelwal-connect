@@ -1,11 +1,16 @@
 import { TextField } from '../form/TextField'
 import { SelectField } from '../form/SelectField'
+import { ChipInput } from '../form/ChipInput'
 import {
   BUSINESS_CATEGORY_OPTIONS,
   BUSINESS_TYPE_OPTIONS,
   INDIAN_STATE_OPTIONS,
 } from '../../lib/formOptions'
-import type { BusinessFormValues } from '../../lib/businesses'
+import {
+  PRODUCTS_MAX,
+  PRODUCT_MAX_LENGTH,
+  type BusinessFormValues,
+} from '../../lib/businesses'
 
 type BusinessFormProps = {
   value: BusinessFormValues
@@ -58,11 +63,14 @@ export function BusinessForm({ value, onChange }: BusinessFormProps) {
           options={[{ value: '', label: 'Select…' }, ...BUSINESS_TYPE_OPTIONS]}
         />
       </div>
-      <TextField
-        label="Primary product / service (optional)"
-        value={value.primary_product}
-        onChange={(v) => patch({ primary_product: v })}
-        placeholder="e.g. Gold and diamond jewellery"
+      {/* (10.3) Replaces the single "Primary product / service" box. */}
+      <ChipInput
+        label="Products & services (optional)"
+        value={value.products}
+        onChange={(products) => patch({ products })}
+        placeholder="Add one and tap Add"
+        max={PRODUCTS_MAX}
+        maxLength={PRODUCT_MAX_LENGTH}
       />
       <label className="flex flex-col gap-1.5">
         <span className="text-sm text-[var(--color-text-muted)]">Description (optional)</span>

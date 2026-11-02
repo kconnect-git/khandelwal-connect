@@ -110,6 +110,11 @@ Phase 6c (matrimony safety — migration `0025`):
 - ✅ A match now unlocks only while both profiles are active (approved/paused + eligible), so marrying or being hidden suspends matches, reversibly
 - ❌ Not built: telling reporters the outcome, email for any matrimony event (push is Phase 7). See `phase-6c-summary.md`.
 
+Phase 10 (KC Business — plan in `phase-10-plan.md`, built one screen at a time as 10.1, 10.2, …):
+- ✅ 10.1 Business hub (`/business`) + wider business search (migration `0026`). See `phase-10.1-summary.md`.
+- ✅ 10.2 Directory polish: My businesses / List a business buttons, admin-set **Verified** flag with Verify / Unverify in the console (migration `0027`). See `phase-10.2-summary.md`.
+- ✅ 10.3 Business detail: products & services chips, Share / Save / Report, background view and Call/WhatsApp tracking, admin Reports tab (migration `0028`). See `phase-10.3-summary.md`.
+
 **Immediate next step:** apply `0025` and smoke-test (`phase-6c-summary.md` §5), then start Phase 7 (hardening & launch prep).
 
 ---

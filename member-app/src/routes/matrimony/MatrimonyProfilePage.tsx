@@ -4,10 +4,11 @@ import { Avatar } from '../../components/Avatar'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { InterestStatePill } from '../../components/matrimony/MatrimonyCard'
 import { MatrimonyDetails } from '../../components/matrimony/MatrimonyDetails'
-import { ReportDialog } from '../../components/matrimony/ReportDialog'
+import { ReportDialog } from '../../components/ReportDialog'
 import { useMatrimony } from '../../context/MatrimonyContext'
 import {
   INTEREST_MESSAGE_MAX,
+  REPORT_REASON_OPTIONS,
   SHARE_ON_ACCEPT,
   blockMatrimonyProfile,
   endMatrimonyMatch,
@@ -379,6 +380,9 @@ export function MatrimonyProfilePage() {
         open={dialog === 'report'}
         name={shortName(profile)}
         busy={busy}
+        reasons={REPORT_REASON_OPTIONS}
+        note={`Only the admins see reports. ${shortName(profile)} won’t be told who reported them.`}
+        offerBlock
         onSubmit={({ reason, details, alsoBlock }) =>
           act(async () => {
             await reportMatrimonyProfile(profile.id, reason, details)

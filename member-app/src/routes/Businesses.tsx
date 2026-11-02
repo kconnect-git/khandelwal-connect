@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
 import { ChipSelect } from '../components/ChipSelect'
+import { VerifiedTag } from '../components/businesses/VerifiedTag'
 import {
   businessMetaLine,
   getBusinessFilterOptions,
@@ -16,13 +17,19 @@ type Filters = {
   category: string
   city: string
   state: string
+  /** (10.3) Only listings the member saved from a detail page. */
+  saved: boolean
 }
 
-const EMPTY_FILTERS: Filters = { category: '', city: '', state: '' }
+const EMPTY_FILTERS: Filters = { category: '', city: '', state: '', saved: false }
 
 export function Businesses() {
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  // (10.1) The hub's search box lands here as ?q=. Seed both values so the
+  // first fetch already uses it instead of waiting out the debounce.
+  const [searchParams] = useSearchParams()
+  const initialQuery = (searchParams.get('q') ?? '').trim()
+  const [search, setSearch] = useState(initialQuery)
+  const [debouncedSearch, setDebouncedSearch] = useState(initialQuery)
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [options, setOptions] = useState<BusinessFilterOptions | null>(null)
   const [entries, setEntries] = useState<BusinessListingPage[]>([])
@@ -52,6 +59,7 @@ export function Businesses() {
       category: filters.category || undefined,
       city: filters.city || undefined,
       state: filters.state || undefined,
+      savedOnly: filters.saved,
       limit: PAGE_SIZE,
       offset: 0,
     })
@@ -82,6 +90,7 @@ export function Businesses() {
         category: filters.category || undefined,
         city: filters.city || undefined,
         state: filters.state || undefined,
+        savedOnly: filters.saved,
         limit: PAGE_SIZE,
         offset: entries.length,
       })
@@ -95,19 +104,19 @@ export function Businesses() {
     }
   }
 
-  const anyFilter = filters.category !== '' || filters.city !== '' || filters.state !== ''
+  const anyFilter =
+    filters.category !== '' || filters.city !== '' || filters.state !== '' || filters.saved
   const filtering = debouncedSearch !== '' || anyFilter
   const hasMore = total !== null && entries.length < total
 
   return (
     <div className="flex-1 flex flex-col gap-5 px-5 py-8 max-w-2xl mx-auto w-full">
-      {/* Mobile reaches this page through the Explore tab, so lead back there.
-          Desktop has Businesses/Events in its header and no Explore page. */}
+      {/* (10.1) Every width reaches the directory through the KC Business hub. */}
       <Link
-        to="/explore"
-        className="sm:hidden text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+        to="/business"
+        className="text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
       >
-        ‹ Explore
+        ‹ Business
       </Link>
 
       <div className="flex items-end justify-between">
@@ -122,19 +131,30 @@ export function Businesses() {
         )}
       </div>
 
-      <Link
-        to="/profile?tab=business"
-        className="self-start rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
-      >
-        My businesses
-      </Link>
+      {/* (10.2) Both open the Profile Business tab for now: 10.4 repoints
+          "List a business" to /businesses/new, 10.5 "My businesses" to
+          /businesses/mine. */}
+      <div className="flex flex-wrap gap-2">
+        <Link
+          to="/profile?tab=business"
+          className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
+        >
+          My businesses
+        </Link>
+        <Link
+          to="/profile?tab=business"
+          className="rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] transition-colors"
+        >
+          + List a business
+        </Link>
+      </div>
 
       <div className="flex items-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] focus-within:border-[var(--color-accent)]">
         <input
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by business or owner name…"
+          placeholder="Search business, owner, product, industry or city…"
           aria-label="Search businesses"
           className="flex-1 min-w-0 bg-transparent px-3 py-2.5 outline-none"
         />
@@ -159,6 +179,18 @@ export function Businesses() {
           onChange={(state) => setFilters((f) => ({ ...f, state }))}
           options={options?.states ?? []}
         />
+        <button
+          type="button"
+          onClick={() => setFilters((f) => ({ ...f, saved: !f.saved }))}
+          aria-pressed={filters.saved}
+          className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+            filters.saved
+              ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-white'
+              : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+          }`}
+        >
+          Saved
+        </button>
         {anyFilter && (
           <button
             type="button"
@@ -176,9 +208,11 @@ export function Businesses() {
         <p className="text-sm text-[var(--color-text-muted)]">Loading businesses…</p>
       ) : entries.length === 0 ? (
         <p className="text-sm text-[var(--color-text-muted)]">
-          {filtering
-            ? 'No businesses match your search or filters.'
-            : 'No businesses listed yet. Be the first to add yours.'}
+          {filters.saved && debouncedSearch === '' && !filters.category && !filters.city && !filters.state
+            ? 'You haven’t saved any businesses yet.'
+            : filtering
+              ? 'No businesses match your search or filters.'
+              : 'No businesses listed yet. Be the first to add yours.'}
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -189,8 +223,11 @@ export function Businesses() {
                 className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 hover:bg-[var(--color-surface-hover)] transition-colors"
               >
                 <Avatar name={entry.name} photoUrl={entry.logo_url} size={40} />
-                <span className="flex flex-col min-w-0">
-                  <span className="font-heading font-medium truncate">{entry.name}</span>
+                <span className="flex flex-col min-w-0 flex-1">
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="font-heading font-medium truncate">{entry.name}</span>
+                    {entry.is_verified && <VerifiedTag />}
+                  </span>
                   {businessMetaLine(entry) && (
                     <span className="text-sm text-[var(--color-text-muted)] truncate">
                       {businessMetaLine(entry)}

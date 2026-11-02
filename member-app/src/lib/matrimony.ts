@@ -303,8 +303,6 @@ export const REPORT_REASON_OPTIONS = toOptions([
   'Other',
 ])
 
-export const REPORT_DETAILS_MAX = 1000
-
 export async function setMatrimonyPaused(paused: boolean): Promise<void> {
   const { error } = await supabase.rpc('set_matrimony_paused', { p_paused: paused })
   if (error) throw error

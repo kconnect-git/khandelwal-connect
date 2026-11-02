@@ -1,19 +1,37 @@
 import { useEffect, useState } from 'react'
-import { REPORT_DETAILS_MAX, REPORT_REASON_OPTIONS } from '../../lib/matrimony'
 
 // Phase 6c: report a matrimony profile. ConfirmDialog only takes free text,
 // and a report needs a reason and an "also block" choice, so this is its own
-// small dialog in the same style.
+// small dialog in the same style. (10.3) Shared with business listings:
+// the reasons and note come from the caller, and the "also block" box only
+// shows when the caller offers it.
+
+/** Both report tables cap details at 1000 characters. */
+const REPORT_DETAILS_MAX = 1000
 
 type ReportDialogProps = {
   open: boolean
   name: string
   busy: boolean
+  reasons: { value: string; label: string }[]
+  /** The line under the title: who sees the report. */
+  note: string
+  /** Show an "Also block {name}" checkbox, ticked by default. */
+  offerBlock?: boolean
   onSubmit: (report: { reason: string; details: string; alsoBlock: boolean }) => void
   onCancel: () => void
 }
 
-export function ReportDialog({ open, name, busy, onSubmit, onCancel }: ReportDialogProps) {
+export function ReportDialog({
+  open,
+  name,
+  busy,
+  reasons,
+  note,
+  offerBlock = false,
+  onSubmit,
+  onCancel,
+}: ReportDialogProps) {
   const [reason, setReason] = useState('')
   const [details, setDetails] = useState('')
   const [alsoBlock, setAlsoBlock] = useState(true)
@@ -22,13 +40,13 @@ export function ReportDialog({ open, name, busy, onSubmit, onCancel }: ReportDia
     if (!open) return
     setReason('')
     setDetails('')
-    setAlsoBlock(true)
+    setAlsoBlock(offerBlock)
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') onCancel()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [open, onCancel])
+  }, [open, onCancel, offerBlock])
 
   if (!open) return null
 
@@ -51,9 +69,7 @@ export function ReportDialog({ open, name, busy, onSubmit, onCancel }: ReportDia
         <h2 id="report-dialog-title" className="text-base font-semibold">
           Report {name}
         </h2>
-        <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-          Only the admins see reports. {name} won’t be told who reported them.
-        </p>
+        <p className="mt-1 text-sm text-[var(--color-text-muted)]">{note}</p>
 
         <label className="mt-4 block">
           <span className="text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase">
@@ -65,7 +81,7 @@ export function ReportDialog({ open, name, busy, onSubmit, onCancel }: ReportDia
             className="mt-1.5 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
           >
             <option value="">Select…</option>
-            {REPORT_REASON_OPTIONS.map((option) => (
+            {reasons.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -87,14 +103,16 @@ export function ReportDialog({ open, name, busy, onSubmit, onCancel }: ReportDia
           />
         </label>
 
-        <label className="mt-3 flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={alsoBlock}
-            onChange={(event) => setAlsoBlock(event.target.checked)}
-          />
-          Also block {name}
-        </label>
+        {offerBlock && (
+          <label className="mt-3 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={alsoBlock}
+              onChange={(event) => setAlsoBlock(event.target.checked)}
+            />
+            Also block {name}
+          </label>
+        )}
 
         <div className="mt-5 flex justify-end gap-2">
           <button

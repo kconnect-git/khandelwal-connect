@@ -4,27 +4,114 @@ import { Avatar } from '../../components/Avatar'
 import { ChipSelect } from '../../components/ChipSelect'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { TabStrip } from '../../components/TabStrip'
+import { BusinessReports } from '../../components/admin/BusinessReports'
 import { DataTable } from '../../components/admin/DataTable'
-import { adminListBusinesses, adminSetBusinessHidden, formatAdminDate } from '../../lib/admin'
+import { VerifiedTag } from '../../components/businesses/VerifiedTag'
+import {
+  adminListBusinesses,
+  adminSetBusinessHidden,
+  adminSetBusinessVerified,
+  formatAdminDate,
+} from '../../lib/admin'
 import { BUSINESS_CATEGORY_OPTIONS } from '../../lib/formOptions'
 import type { AdminBusinessRow } from '../../types/database'
 
 // Phase 5b-2: business listing moderation. Hiding takes a listing out of
 // every member-facing read; its owner still sees it on Profile > Business
 // with the reason as a banner. No email -- a deliberate planning decision.
+// (10.2) Admins can also mark a listing Verified after actually checking it.
 
 const PAGE_SIZE = 25
 
-type View = 'visible' | 'hidden'
+// (10.3) + Reports, which renders its own list (BusinessReports).
+type View = 'visible' | 'hidden' | 'reports'
+
+type ActionKind = 'hide' | 'unhide' | 'verify' | 'unverify'
 
 type PendingAction = {
   business: AdminBusinessRow
-  hide: boolean
+  kind: ActionKind
+}
+
+const ACTION_COPY: Record<
+  ActionKind,
+  {
+    title: (name: string) => string
+    description: string
+    prompt?: { label: string; placeholder: string; required: boolean }
+    confirmLabel: string
+  }
+> = {
+  hide: {
+    title: (name) => `Hide "${name}"?`,
+    description:
+      'It disappears from the businesses directory and the owner’s member profile. The owner still sees it, with your reason.',
+    prompt: {
+      label: 'Reason',
+      placeholder: 'The owner sees this, so say what needs to change.',
+      required: true,
+    },
+    confirmLabel: 'Hide listing',
+  },
+  unhide: {
+    title: (name) => `Unhide "${name}"?`,
+    description: 'It reappears in the businesses directory straight away.',
+    confirmLabel: 'Unhide',
+  },
+  verify: {
+    title: (name) => `Verify "${name}"?`,
+    description:
+      'Members see a Verified tag on this listing. Only verify a business you’ve actually checked.',
+    prompt: {
+      label: 'How was it verified? (optional)',
+      placeholder: 'e.g. GST checked, shop visited. Only admins see this.',
+      required: false,
+    },
+    confirmLabel: 'Verify',
+  },
+  unverify: {
+    title: (name) => `Remove verification from "${name}"?`,
+    description: 'The Verified tag disappears from the listing straight away.',
+    confirmLabel: 'Remove verification',
+  },
+}
+
+const ACTION_BUTTON =
+  'rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm whitespace-nowrap hover:bg-[var(--color-surface-hover)] disabled:opacity-50'
+
+function viewFromParam(value: string | null): View {
+  return value === 'hidden' || value === 'reports' ? value : 'visible'
 }
 
 export function AdminBusinesses() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const view: View = searchParams.get('view') === 'hidden' ? 'hidden' : 'visible'
+  const view = viewFromParam(searchParams.get('view'))
+
+  return (
+    <div className="flex flex-col gap-4">
+      <TabStrip
+        tabs={[
+          { key: 'visible' as const, label: 'Visible' },
+          { key: 'hidden' as const, label: 'Hidden' },
+          { key: 'reports' as const, label: 'Reports' },
+        ]}
+        active={view}
+        onChange={(key) => {
+          const next = new URLSearchParams(searchParams)
+          if (key === 'visible') next.delete('view')
+          else next.set('view', key)
+          setSearchParams(next, { replace: true })
+        }}
+        label="Listing visibility"
+      />
+      {view === 'reports' ? <BusinessReports /> : <BusinessListings key={view} view={view} />}
+    </div>
+  )
+}
+
+/** The Visible / Hidden table. */
+function BusinessListings({ view }: { view: Exclude<View, 'reports'> }) {
+  const [searchParams, setSearchParams] = useSearchParams()
   const category = searchParams.get('category') ?? ''
 
   const [rows, setRows] = useState<AdminBusinessRow[]>([])
@@ -94,11 +181,16 @@ export function AdminBusinesses() {
     setBusyId(pending.business.id)
     setError(null)
     try {
-      await adminSetBusinessHidden(pending.business.id, pending.hide, reason || undefined)
+      const { business, kind } = pending
+      if (kind === 'hide' || kind === 'unhide') {
+        await adminSetBusinessHidden(business.id, kind === 'hide', reason || undefined)
+      } else {
+        await adminSetBusinessVerified(business.id, kind === 'verify', reason || undefined)
+      }
       setAction(null)
       await load()
     } catch (err) {
-      console.error('[AdminBusinesses] failed to change visibility', err)
+      console.error('[AdminBusinesses] failed to update listing', err)
       setError(err instanceof Error ? err.message : 'Could not update this listing.')
     } finally {
       setBusyId(null)
@@ -116,16 +208,6 @@ export function AdminBusinesses() {
 
   return (
     <div className="flex flex-col gap-4">
-      <TabStrip
-        tabs={[
-          { key: 'visible' as const, label: 'Visible' },
-          { key: 'hidden' as const, label: 'Hidden' },
-        ]}
-        active={view}
-        onChange={(key) => setParam('view', key === 'hidden' ? 'hidden' : '')}
-        label="Listing visibility"
-      />
-
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <input
           type="search"
@@ -171,7 +253,10 @@ export function AdminBusinesses() {
                 <div className="flex items-start gap-2.5">
                   <Avatar name={business.name} photoUrl={business.logo_url} size={32} />
                   <div className="min-w-0">
-                    <p className="font-medium">{business.name}</p>
+                    <p className="flex items-baseline gap-2">
+                      <span className="font-medium">{business.name}</span>
+                      {business.is_verified && <VerifiedTag />}
+                    </p>
                     {business.brand_name && (
                       <p className="text-xs text-[var(--color-text-muted)]">{business.brand_name}</p>
                     )}
@@ -225,9 +310,9 @@ export function AdminBusinesses() {
               return business.is_hidden ? (
                 <button
                   type="button"
-                  onClick={() => setAction({ business, hide: false })}
+                  onClick={() => setAction({ business, kind: 'unhide' })}
                   disabled={busy}
-                  className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm whitespace-nowrap hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+                  className={ACTION_BUTTON}
                 >
                   Unhide
                 </button>
@@ -235,9 +320,19 @@ export function AdminBusinesses() {
                 <>
                   <button
                     type="button"
-                    onClick={() => setAction({ business, hide: true })}
+                    onClick={() =>
+                      setAction({ business, kind: business.is_verified ? 'unverify' : 'verify' })
+                    }
                     disabled={busy}
-                    className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm whitespace-nowrap hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+                    className={ACTION_BUTTON}
+                  >
+                    {business.is_verified ? 'Unverify' : 'Verify'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAction({ business, kind: 'hide' })}
+                    disabled={busy}
+                    className={ACTION_BUTTON}
                   >
                     Hide
                   </button>
@@ -271,28 +366,10 @@ export function AdminBusinesses() {
 
       <ConfirmDialog
         open={action !== null}
-        title={
-          action
-            ? action.hide
-              ? `Hide "${action.business.name}"?`
-              : `Unhide "${action.business.name}"?`
-            : ''
-        }
-        description={
-          action?.hide
-            ? 'It disappears from the businesses directory and the owner’s member profile. The owner still sees it, with your reason.'
-            : 'It reappears in the businesses directory straight away.'
-        }
-        prompt={
-          action?.hide
-            ? {
-                label: 'Reason',
-                placeholder: 'The owner sees this, so say what needs to change.',
-                required: true,
-              }
-            : undefined
-        }
-        confirmLabel={action?.hide ? 'Hide listing' : 'Unhide'}
+        title={action ? ACTION_COPY[action.kind].title(action.business.name) : ''}
+        description={action ? ACTION_COPY[action.kind].description : ''}
+        prompt={action ? ACTION_COPY[action.kind].prompt : undefined}
+        confirmLabel={action ? ACTION_COPY[action.kind].confirmLabel : ''}
         busy={busyId !== null}
         onConfirm={(value) => {
           if (action) run(action, value)

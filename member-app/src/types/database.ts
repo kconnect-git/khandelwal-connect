@@ -154,6 +154,13 @@ export type BusinessRow = {
   hidden_reason: string | null
   hidden_by: string | null
   hidden_at: string | null
+  // (0027) Admin-set "Verified". Read-only from the client, same trigger.
+  is_verified: boolean
+  verified_by: string | null
+  verified_at: string | null
+  // (0028) Shown as chips. Replaces primary_product, which is no longer
+  // edited or read (the column stays until a later cleanup).
+  products: string[]
   created_at: string
   updated_at: string
 }
@@ -243,6 +250,8 @@ export type AdminOverviewStats = {
   matrimony_approved: number
   /** (0025) */
   matrimony_reports_open: number
+  /** (0028) */
+  business_reports_open: number
 }
 
 // ================================================================
@@ -539,6 +548,40 @@ export type AdminMatrimonyReportRow = {
 }
 
 // ================================================================
+// Phase 10.3 (0028): business reports
+// ================================================================
+
+export type BusinessReportReason =
+  | 'Fake or misleading'
+  | 'Wrong contact details'
+  | 'Inappropriate content'
+  | "Not a member's business"
+  | 'Other'
+
+/** One row of admin_list_business_reports. */
+export type AdminBusinessReportRow = {
+  id: string
+  created_at: string
+  reason: BusinessReportReason
+  details: string | null
+  status: 'open' | 'resolved'
+  resolution_note: string | null
+  resolved_at: string | null
+  resolved_by_name: string | null
+  reporter_person_id: string
+  reporter_name: string
+  business_id: string
+  business_name: string
+  business_is_hidden: boolean
+  owner_id: string
+  owner_name: string
+  owner_member_code: string | null
+  /** Open reports on the same listing, this one included. */
+  open_against: number
+  total_count: number
+}
+
+// ================================================================
 // Phase 5b-2 (0021): moderation + admin management
 // ================================================================
 
@@ -554,6 +597,8 @@ export type AdminBusinessRow = {
   is_hidden: boolean
   hidden_reason: string | null
   hidden_at: string | null
+  is_verified: boolean
+  verified_at: string | null
   owner_id: string
   owner_name: string
   owner_member_code: string | null
@@ -807,6 +852,32 @@ export type Database = {
       }
       admin_set_business_hidden: {
         Args: { p_business_id: string; p_hidden: boolean; p_reason?: string | null }
+        Returns: void
+      }
+      // (0027)
+      admin_set_business_verified: {
+        Args: { p_business_id: string; p_verified: boolean; p_note?: string | null }
+        Returns: void
+      }
+      // (0028) business detail
+      set_business_saved: {
+        Args: { p_business_id: string; p_saved: boolean }
+        Returns: void
+      }
+      report_business: {
+        Args: { p_business_id: string; p_reason: string; p_details?: string | null }
+        Returns: void
+      }
+      log_business_activity: {
+        Args: { p_business_id: string; p_kind: string }
+        Returns: void
+      }
+      admin_list_business_reports: {
+        Args: { p_status?: string | null; p_limit?: number; p_offset?: number }
+        Returns: AdminBusinessReportRow[]
+      }
+      admin_resolve_business_report: {
+        Args: { p_report_id: string; p_note?: string | null }
         Returns: void
       }
       admin_list_admins: {
@@ -1150,6 +1221,7 @@ export type Database = {
           p_state?: string | null
           p_limit?: number
           p_offset?: number
+          p_saved_only?: boolean
         }
         Returns: {
           id: string
@@ -1161,6 +1233,7 @@ export type Database = {
           contact_phone: string | null
           website: string | null
           logo_url: string | null
+          is_verified: boolean
           owner_id: string
           owner_name: string
           owner_photo_url: string | null
@@ -1186,12 +1259,14 @@ export type Database = {
           address_line1: string | null
           address_line2: string | null
           business_email: string | null
-          primary_product: string | null
           business_type: string | null
           facebook_url: string | null
           instagram_url: string | null
           linkedin_url: string | null
           youtube_url: string | null
+          products: string[]
+          is_verified: boolean
+          is_saved: boolean
           owner_id: string
           owner_name: string
           owner_photo_url: string | null

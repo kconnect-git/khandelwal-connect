@@ -20,23 +20,27 @@ export type BusinessCard = {
   owner_name: string
   owner_photo_url: string | null
   owner_member_code: string
+  /** (0027) Admin-set "Verified". */
+  is_verified: boolean
 }
 
 export type BusinessListingPage = BusinessCard & { total_count: number }
 
 /** One listing as returned by get_business: the card fields plus the
- * richer Phase 3c detail columns (0017). */
+ * richer Phase 3c detail columns (0017) and, from 0028, products and
+ * whether the caller saved it. */
 export type BusinessListing = BusinessCard & {
   brand_name: string | null
   address_line1: string | null
   address_line2: string | null
   business_email: string | null
-  primary_product: string | null
   business_type: string | null
   facebook_url: string | null
   instagram_url: string | null
   linkedin_url: string | null
   youtube_url: string | null
+  products: string[]
+  is_saved: boolean
 }
 
 export type MemberBusiness = {
@@ -59,7 +63,7 @@ export type BusinessFormValues = {
   brand_name: string
   category: string
   business_type: string
-  primary_product: string
+  products: string[]
   description: string
   address_line1: string
   address_line2: string
@@ -79,7 +83,7 @@ export const EMPTY_BUSINESS_FORM: BusinessFormValues = {
   brand_name: '',
   category: '',
   business_type: '',
-  primary_product: '',
+  products: [],
   description: '',
   address_line1: '',
   address_line2: '',
@@ -100,7 +104,7 @@ export function businessToFormValues(row: BusinessRow): BusinessFormValues {
     brand_name: row.brand_name ?? '',
     category: row.category ?? '',
     business_type: row.business_type ?? '',
-    primary_product: row.primary_product ?? '',
+    products: row.products ?? [],
     description: row.description ?? '',
     address_line1: row.address_line1 ?? '',
     address_line2: row.address_line2 ?? '',
@@ -118,6 +122,24 @@ export function businessToFormValues(row: BusinessRow): BusinessFormValues {
 
 const PHONE_PATTERN = /^\+91[6-9]\d{9}$/
 
+/** (0028) Mirrors business_products_valid. */
+export const PRODUCTS_MAX = 20
+export const PRODUCT_MAX_LENGTH = 60
+
+/** Trimmed, blanks dropped, case-insensitive duplicates dropped. */
+function cleanProducts(products: string[]): string[] {
+  const seen = new Set<string>()
+  const cleaned: string[] = []
+  for (const raw of products) {
+    const item = raw.trim()
+    const key = item.toLowerCase()
+    if (item.length === 0 || seen.has(key)) continue
+    seen.add(key)
+    cleaned.push(item)
+  }
+  return cleaned
+}
+
 /** Mirrors the DB check constraints (0014/0017) so the user gets a readable
  * message before a round trip. */
 export function validateBusiness(values: BusinessFormValues): string | null {
@@ -130,6 +152,13 @@ export function validateBusiness(values: BusinessFormValues): string | null {
   const email = values.business_email.trim()
   if (email.length > 0 && !EMAIL_PATTERN.test(email)) {
     return 'Please enter a valid business email, or leave it blank.'
+  }
+  const products = cleanProducts(values.products)
+  if (products.length > PRODUCTS_MAX) {
+    return `Add at most ${PRODUCTS_MAX} products or services.`
+  }
+  if (products.some((item) => item.length > PRODUCT_MAX_LENGTH)) {
+    return `Keep each product or service to ${PRODUCT_MAX_LENGTH} characters.`
   }
   return null
 }
@@ -148,7 +177,7 @@ function formValuesToPatch(values: BusinessFormValues): Partial<BusinessRow> {
     brand_name: values.brand_name.trim() || null,
     category: values.category.trim() || null,
     business_type: values.business_type.trim() || null,
-    primary_product: values.primary_product.trim() || null,
+    products: cleanProducts(values.products),
     description: values.description.trim() || null,
     address_line1: values.address_line1.trim() || null,
     address_line2: values.address_line2.trim() || null,
@@ -173,6 +202,8 @@ export async function listBusinesses(params: {
   state?: string
   limit?: number
   offset?: number
+  /** (0028) Only listings the caller saved. */
+  savedOnly?: boolean
 }): Promise<BusinessListingPage[]> {
   const { data, error } = await supabase.rpc('list_businesses', {
     p_search: params.search || null,
@@ -181,6 +212,7 @@ export async function listBusinesses(params: {
     p_state: params.state || null,
     p_limit: params.limit ?? 20,
     p_offset: params.offset ?? 0,
+    p_saved_only: params.savedOnly ?? false,
   })
 
   if (error) throw error
@@ -208,6 +240,52 @@ export async function getBusinessFilterOptions(): Promise<BusinessFilterOptions>
     cities: rows.filter((r) => r.kind === 'city').map((r) => r.value),
     states: rows.filter((r) => r.kind === 'state').map((r) => r.value),
   }
+}
+
+// ------------------------------------------- save / report / track ----
+// (0028) RPC-only: business_saves, business_reports and business_activity
+// have no table policies.
+
+export async function setBusinessSaved(businessId: string, saved: boolean): Promise<void> {
+  const { error } = await supabase.rpc('set_business_saved', {
+    p_business_id: businessId,
+    p_saved: saved,
+  })
+  if (error) throw error
+}
+
+/** Mirrors the business_reports.reason check. */
+export const BUSINESS_REPORT_REASON_OPTIONS = [
+  'Fake or misleading',
+  'Wrong contact details',
+  'Inappropriate content',
+  "Not a member's business",
+  'Other',
+].map((value) => ({ value, label: value }))
+
+export async function reportBusiness(
+  businessId: string,
+  reason: string,
+  details: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('report_business', {
+    p_business_id: businessId,
+    p_reason: reason,
+    p_details: details.trim() || null,
+  })
+  if (error) throw error
+}
+
+export type BusinessActivityKind = 'view' | 'call' | 'whatsapp'
+
+/** Fire-and-forget: tracking must never break the page. The RPC itself
+ * skips the owner and repeats on the same day. */
+export function logBusinessActivity(businessId: string, kind: BusinessActivityKind): void {
+  supabase
+    .rpc('log_business_activity', { p_business_id: businessId, p_kind: kind })
+    .then(({ error }) => {
+      if (error) console.warn('[businesses] failed to log activity', error)
+    })
 }
 
 // ----------------------------------------------------------- writes ----
