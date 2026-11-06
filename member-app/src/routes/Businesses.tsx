@@ -131,18 +131,16 @@ export function Businesses() {
         )}
       </div>
 
-      {/* (10.2) Both open the Profile Business tab for now: 10.4 repoints
-          "List a business" to /businesses/new, 10.5 "My businesses" to
-          /businesses/mine. */}
+      {/* (10.2) Header buttons; their pages arrived in 10.4 / 10.5. */}
       <div className="flex flex-wrap gap-2">
         <Link
-          to="/profile?tab=business"
+          to="/businesses/mine"
           className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
         >
           My businesses
         </Link>
         <Link
-          to="/profile?tab=business"
+          to="/businesses/new"
           className="rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] transition-colors"
         >
           + List a business

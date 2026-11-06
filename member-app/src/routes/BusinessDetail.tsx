@@ -216,7 +216,7 @@ export function BusinessDetail() {
 
       {isOwner ? (
         <Link
-          to="/profile?tab=business"
+          to={`/businesses/${business.id}/edit`}
           className="self-start rounded-full bg-[var(--color-accent)] text-white font-semibold px-6 py-2.5 text-sm hover:bg-[var(--color-accent-hover)] transition-colors"
         >
           Edit listing
@@ -372,7 +372,7 @@ export function BusinessDetail() {
           <span className="flex flex-col min-w-0">
             <span className="font-heading font-medium truncate">{business.owner_name}</span>
             <span className="text-xs tracking-wide text-[var(--color-text-muted)]">
-              {business.owner_member_code}
+              {[business.owner_role, business.owner_member_code].filter(Boolean).join(' · ')}
             </span>
           </span>
         </Link>

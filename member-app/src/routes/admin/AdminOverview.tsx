@@ -39,6 +39,12 @@ function tilesFor(stats: AdminOverviewStats): Tile[] {
       urgent: (stats.matrimony_reports_open ?? 0) > 0,
     },
     {
+      label: 'Business listings awaiting review',
+      value: stats.businesses_pending ?? 0,
+      to: '/admin/approvals?tab=businesses',
+      urgent: (stats.businesses_pending ?? 0) > 0,
+    },
+    {
       label: 'Open business reports',
       value: stats.business_reports_open ?? 0,
       to: '/admin/businesses?view=reports',

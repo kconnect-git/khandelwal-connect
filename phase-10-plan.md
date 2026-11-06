@@ -51,11 +51,11 @@ Each sub-phase is one screen, so it's small enough to ship and smoke-test alone.
 | **10.1** ✅ | Business hub | — | `0026` wider search in `list_businesses` |
 | **10.2** ✅ | Directory polish | 10.1 | `0027` admin-set Verified flag |
 | **10.3** ✅ | Business detail | — | `0028` products, saves, reports, activity tracking |
-| **10.4** | List your business | 10.3 (products column) | `0029` show-phone, owner role, review status |
-| **10.5** | My businesses | 10.4 (review status) | admin queue in the same `0029` |
-| **10.6** | Buy & Sell | 10.1 | `0030` posts |
-| **10.7** | Referrals | 10.1 | `0031` referrals |
-| **10.8** | My Business Dashboard | 10.3 tracking, 10.6, 10.7 | `0032` enquiries + stats RPC |
+| **10.4** ✅ | List your business | 10.3 (products column) | `0029` show-phone, owner role, owner-only read policy |
+| **10.5** ✅ | My businesses | 10.4 | `0030` review status + admin queue |
+| **10.6** | Buy & Sell | 10.1 | `0031` posts |
+| **10.7** | Referrals | 10.1 | `0032` referrals |
+| **10.8** | My Business Dashboard | 10.3 tracking, 10.6, 10.7 | `0033` enquiries + stats RPC |
 
 Activity tracking (views / calls / WhatsApp taps) ships in **10.3**, not 10.8, so the dashboard has real data by the time it's built.
 
@@ -95,23 +95,24 @@ Activity tracking (views / calls / WhatsApp taps) ships in **10.3**, not 10.8, s
 - "Ask about this" enquiries on a product chip remain **10.8**.
 - **Exit:** chips, Share, Save and Report work. Opening a listing as another member writes one view row, and tapping Call or WhatsApp writes a row each.
 
-### 10.4 — List your business (screen 6)
-- Move the add/edit form out of the Profile tab onto its own pages: **`/businesses/new`** and **`/businesses/:id/edit`**. Both reuse `BusinessForm`. The Profile Business tab becomes a short summary that links to My businesses.
-- **"From your profile" prefill:** on a new listing, prefill city, state, phone and role from `people`. Each prefilled field has a small "From your profile" label until the member edits it. Nothing is written back to the profile.
+### 10.4 — List your business (screen 6) — ✅ built, see `phase-10.4-summary.md`
+- The add/edit form moved out of the Profile tab onto its own pages: **`/businesses/new`** and **`/businesses/:id/edit`** (`routes/BusinessEditPage.tsx`), both reusing `BusinessForm`. Profile > Business now shows a **compact list** (View / Edit, "+ List a business").
+- **"From your profile" prefill:** a new listing starts with city, state and phone from `people`, and role = Owner / Proprietor when the member's occupation is Business. Each is marked until edited. Nothing is written back to the profile.
 - **New columns:**
-  - `owner_role text`: free text, e.g. "Founder" or "Partner". It describes the listing, not the person, so the "no free-text profession" rule doesn't apply.
-  - `show_phone boolean default true`: when false, `get_business` / `list_businesses` return no phone (admins still see it).
-- Products & services input: a text box with an **Add** button, and removable chips.
-- Logo upload: today a logo can only be added once the listing exists. Keep that, by saving first and then showing the logo upload.
-- Required fields per the mockup: name, category, city, state, phone.
-- **Exit:** a member creates a listing from `/businesses/new` with prefilled fields. With the phone hidden, another member can't see it in the UI or through the RPC.
+  - `owner_role`: a **fixed list** (Owner / Proprietor, Partner, Founder / Co-founder, Director, Manager, Family member, Other), decided in planning in line with the "no free text" rule. It shows on the detail page's Owner card.
+  - `show_phone boolean default true`: when false, `get_business` / `list_businesses` return a null phone, so there are no WhatsApp / Call buttons (admins still see it).
+- **Read policy tightened** to the owner's own rows (`own businesses read`). A direct `select *` would otherwise leak a hidden phone; every cross-member read already goes through definer RPCs.
+- **City, State and Phone are required by the form**, for new listings and edits. There's no DB constraint.
+- **Logo:** pick one before the first save; it uploads right after the listing is created. On the edit page, Change / Remove act at once.
+- Review status moved wholly to 10.5 (`0030`).
 
-### 10.5 — My businesses (screen 5)
-- New route **`/businesses/mine`** (replacing the redirect): a list of the member's own listings with status, View / Edit, "+ Add", and a dashed "Own another business?" block.
-- **Pre-approval:** new `businesses.review_status` (`pending → approved | changes_requested | rejected`), using the same lifecycle as events and matrimony. Existing rows are backfilled as `approved`. Member-facing reads require `approved` and `not is_hidden`. Changing the column from the client is blocked by a trigger, like `businesses_protect_moderation_columns`.
-- Edits after approval: **not** re-reviewed (same as matrimony 6a). Admins can still hide a listing.
-- Admin: `/admin/businesses` gets a **Pending** tab with Approve / Request changes / Reject (with a reason), audited. The Overview gets a "Businesses pending" tile.
-- The note from the mockup: "New listings are shown to members after an admin approves them."
+### 10.5 — My businesses (screen 5) — ✅ built, see `phase-10.5-summary.md`
+- New route **`/businesses/mine`** (replacing the redirect): the owner's listings with an **Approved / Pending review / Changes requested / Turned down** badge, the admin's note, View / Edit, "+ Add", and a dashed "Own another business? Add it here." block. Profile > Business now shows a one-line summary ("2 listings · 1 pending review") linking here. The directory button and the form pages' back links go here.
+- **Pre-approval** (migration `0030`): `businesses.review_status` (`pending → approved | changes_requested | rejected`), with the review note, reviewer and timestamps. Existing rows were backfilled as `approved`. Member-facing reads require `approved` and `not is_hidden`. The 0021/0027 trigger guards the review columns and moves the review along on an owner's edit. Decided in planning:
+  - **Changes requested:** saving resubmits.
+  - **Approved:** a new **name or industry** sends it back to Pending and clears Verified (closing the 10.2 gap). Other edits stay live.
+  - **Turned down:** final; the owner can only remove it.
+- Admin: a third **Businesses** tab on `/admin/approvals` (with a count): Approve / Ask for changes / Turn down (note required), audited. The listing's description, products and phone are shown inline. There's an Overview tile "Business listings awaiting review". `/admin/businesses` Visible / Hidden list approved listings only.
 - **Exit:** a new listing shows "Pending review", is invisible to other members, and goes live once an admin approves it.
 
 ### 10.6 — Buy & Sell (screen 7)

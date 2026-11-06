@@ -275,10 +275,7 @@ export function Profile() {
       {tab === 'business' && (
         <BusinessTab
           {...personTabProps('business')}
-          ownerId={person.id}
-          authUserId={authUserId}
           businesses={businesses}
-          onBusinessesChange={setBusinesses}
         />
       )}
       {tab === 'spouse' && (

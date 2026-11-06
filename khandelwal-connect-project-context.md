@@ -114,6 +114,8 @@ Phase 10 (KC Business — plan in `phase-10-plan.md`, built one screen at a time
 - ✅ 10.1 Business hub (`/business`) + wider business search (migration `0026`). See `phase-10.1-summary.md`.
 - ✅ 10.2 Directory polish: My businesses / List a business buttons, admin-set **Verified** flag with Verify / Unverify in the console (migration `0027`). See `phase-10.2-summary.md`.
 - ✅ 10.3 Business detail: products & services chips, Share / Save / Report, background view and Call/WhatsApp tracking, admin Reports tab (migration `0028`). See `phase-10.3-summary.md`.
+- ✅ 10.4 List your business: `/businesses/new` + `/businesses/:id/edit` with profile prefill, owner role, "show this number", required city/state/phone; Profile > Business becomes a compact list; table read policy tightened to owner-only (migration `0029`). See `phase-10.4-summary.md`.
+- ✅ 10.5 My businesses + listing approval: `/businesses/mine` with status badges; new listings start Pending and go live on admin approval (Approvals › Businesses tab); name/industry edits re-review and clear Verified; turned down is final (migration `0030`). See `phase-10.5-summary.md`.
 
 **Immediate next step:** apply `0025` and smoke-test (`phase-6c-summary.md` §5), then start Phase 7 (hardening & launch prep).
 

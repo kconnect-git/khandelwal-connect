@@ -1,5 +1,5 @@
 type TextFieldProps = {
-  label?: string
+  label?: React.ReactNode
   type?: 'text' | 'date' | 'time' | 'datetime-local' | 'tel' | 'email'
   value: string
   onChange: (value: string) => void

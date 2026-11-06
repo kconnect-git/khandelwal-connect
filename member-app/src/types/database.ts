@@ -161,9 +161,23 @@ export type BusinessRow = {
   // (0028) Shown as chips. Replaces primary_product, which is no longer
   // edited or read (the column stays until a later cleanup).
   products: string[]
+  // (0029) BUSINESS_ROLE_OPTIONS; and when show_phone is false the
+  // member-facing RPCs return a null contact_phone.
+  owner_role: string | null
+  show_phone: boolean
+  // (0030) Listing approval. Read-only from the client (trigger-protected);
+  // members only see approved listings. review_note is for the owner.
+  review_status: BusinessReviewStatus
+  review_note: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  submitted_at: string | null
   created_at: string
   updated_at: string
 }
+
+/** (0030) */
+export type BusinessReviewStatus = 'pending' | 'approved' | 'changes_requested' | 'rejected'
 
 // ================================================================
 // Phase 5b-1 (0020): admin console
@@ -252,6 +266,8 @@ export type AdminOverviewStats = {
   matrimony_reports_open: number
   /** (0028) */
   business_reports_open: number
+  /** (0030) */
+  businesses_pending: number
 }
 
 // ================================================================
@@ -594,11 +610,19 @@ export type AdminBusinessRow = {
   city: string | null
   state: string | null
   logo_url: string | null
+  /** (0030) Shown inline in the review queue -- a pending listing has no
+   *  public page yet. */
+  description: string | null
+  products: string[]
+  contact_phone: string | null
   is_hidden: boolean
   hidden_reason: string | null
   hidden_at: string | null
   is_verified: boolean
   verified_at: string | null
+  review_status: BusinessReviewStatus
+  review_note: string | null
+  submitted_at: string | null
   owner_id: string
   owner_name: string
   owner_member_code: string | null
@@ -847,6 +871,8 @@ export type Database = {
           p_category?: string | null
           p_limit?: number
           p_offset?: number
+          /** (0030) null = any; defaults to 'approved'. */
+          p_review_status?: BusinessReviewStatus | null
         }
         Returns: AdminBusinessRow[]
       }
@@ -857,6 +883,11 @@ export type Database = {
       // (0027)
       admin_set_business_verified: {
         Args: { p_business_id: string; p_verified: boolean; p_note?: string | null }
+        Returns: void
+      }
+      // (0030)
+      admin_set_business_review: {
+        Args: { p_business_id: string; p_status: string; p_note?: string | null }
         Returns: void
       }
       // (0028) business detail
@@ -1271,6 +1302,7 @@ export type Database = {
           owner_name: string
           owner_photo_url: string | null
           owner_member_code: string
+          owner_role: string | null
         }[]
       }
       list_member_businesses: {

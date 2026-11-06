@@ -1,7 +1,7 @@
 import { supabase } from '../utils/supabase'
 import { compressImage } from './profilePhoto'
 import { EMAIL_PATTERN } from './familyDetails'
-import type { BusinessRow } from '../types/database'
+import type { BusinessReviewStatus, BusinessRow, Person } from '../types/database'
 
 const BUCKET = 'business-media'
 
@@ -41,6 +41,8 @@ export type BusinessListing = BusinessCard & {
   youtube_url: string | null
   products: string[]
   is_saved: boolean
+  /** (0029) */
+  owner_role: string | null
 }
 
 export type MemberBusiness = {
@@ -63,6 +65,7 @@ export type BusinessFormValues = {
   brand_name: string
   category: string
   business_type: string
+  owner_role: string
   products: string[]
   description: string
   address_line1: string
@@ -70,6 +73,8 @@ export type BusinessFormValues = {
   city: string
   state: string
   contact_phone: string
+  /** (0029) "Show this number on the listing". */
+  show_phone: boolean
   business_email: string
   website: string
   facebook_url: string
@@ -83,6 +88,7 @@ export const EMPTY_BUSINESS_FORM: BusinessFormValues = {
   brand_name: '',
   category: '',
   business_type: '',
+  owner_role: '',
   products: [],
   description: '',
   address_line1: '',
@@ -90,6 +96,7 @@ export const EMPTY_BUSINESS_FORM: BusinessFormValues = {
   city: '',
   state: '',
   contact_phone: '',
+  show_phone: true,
   business_email: '',
   website: '',
   facebook_url: '',
@@ -104,6 +111,7 @@ export function businessToFormValues(row: BusinessRow): BusinessFormValues {
     brand_name: row.brand_name ?? '',
     category: row.category ?? '',
     business_type: row.business_type ?? '',
+    owner_role: row.owner_role ?? '',
     products: row.products ?? [],
     description: row.description ?? '',
     address_line1: row.address_line1 ?? '',
@@ -111,6 +119,7 @@ export function businessToFormValues(row: BusinessRow): BusinessFormValues {
     city: row.city ?? '',
     state: row.state ?? '',
     contact_phone: row.contact_phone ?? '',
+    show_phone: row.show_phone ?? true,
     business_email: row.business_email ?? '',
     website: row.website ?? '',
     facebook_url: row.facebook_url ?? '',
@@ -121,6 +130,14 @@ export function businessToFormValues(row: BusinessRow): BusinessFormValues {
 }
 
 const PHONE_PATTERN = /^\+91[6-9]\d{9}$/
+
+/** (0030) */
+export const BUSINESS_REVIEW_LABELS: Record<BusinessReviewStatus, string> = {
+  pending: 'Pending review',
+  approved: 'Approved',
+  changes_requested: 'Changes requested',
+  rejected: 'Turned down',
+}
 
 /** (0028) Mirrors business_products_valid. */
 export const PRODUCTS_MAX = 20
@@ -141,13 +158,18 @@ function cleanProducts(products: string[]): string[] {
 }
 
 /** Mirrors the DB check constraints (0014/0017) so the user gets a readable
- * message before a round trip. */
+ * message before a round trip. (10.4) City, state and phone are required by
+ * the form only -- no DB constraint, so older incomplete listings still show
+ * and just need filling in on their next edit. */
 export function validateBusiness(values: BusinessFormValues): string | null {
   if (values.name.trim().length === 0) return 'Business name is required.'
   if (values.category.trim().length === 0) return 'Please pick an industry type.'
+  if (values.city.trim().length === 0) return 'Please enter the city.'
+  if (values.state.trim().length === 0) return 'Please pick the state.'
   const phone = values.contact_phone.trim()
-  if (phone.length > 0 && !PHONE_PATTERN.test(phone)) {
-    return 'Please enter a valid 10-digit contact number, or leave it blank.'
+  if (phone.length === 0) return 'Please enter a phone or WhatsApp number.'
+  if (!PHONE_PATTERN.test(phone)) {
+    return 'Please enter a valid 10-digit phone or WhatsApp number.'
   }
   const email = values.business_email.trim()
   if (email.length > 0 && !EMAIL_PATTERN.test(email)) {
@@ -161,6 +183,34 @@ export function validateBusiness(values: BusinessFormValues): string | null {
     return `Keep each product or service to ${PRODUCT_MAX_LENGTH} characters.`
   }
   return null
+}
+
+/** (10.4) A new listing's starting values, taken from the member's own
+ * profile, plus which fields were filled that way (the form marks them
+ * "From your profile"). Nothing is written back to the profile. */
+export function businessFormFromProfile(person: Person): {
+  values: BusinessFormValues
+  fromProfile: Set<keyof BusinessFormValues>
+} {
+  const values: BusinessFormValues = { ...EMPTY_BUSINESS_FORM }
+  const fromProfile = new Set<keyof BusinessFormValues>()
+  if (person.current_city) {
+    values.city = person.current_city
+    fromProfile.add('city')
+  }
+  if (person.current_state) {
+    values.state = person.current_state
+    fromProfile.add('state')
+  }
+  if (person.mobile_number && PHONE_PATTERN.test(person.mobile_number)) {
+    values.contact_phone = person.mobile_number
+    fromProfile.add('contact_phone')
+  }
+  if (person.occupation_type === 'Business') {
+    values.owner_role = 'Owner / Proprietor'
+    fromProfile.add('owner_role')
+  }
+  return { values, fromProfile }
 }
 
 /** `https://` prefixed when missing. Used for the website and the four
@@ -177,6 +227,7 @@ function formValuesToPatch(values: BusinessFormValues): Partial<BusinessRow> {
     brand_name: values.brand_name.trim() || null,
     category: values.category.trim() || null,
     business_type: values.business_type.trim() || null,
+    owner_role: values.owner_role.trim() || null,
     products: cleanProducts(values.products),
     description: values.description.trim() || null,
     address_line1: values.address_line1.trim() || null,
@@ -184,6 +235,7 @@ function formValuesToPatch(values: BusinessFormValues): Partial<BusinessRow> {
     city: values.city.trim() || null,
     state: values.state.trim() || null,
     contact_phone: values.contact_phone.trim() || null,
+    show_phone: values.show_phone,
     business_email: values.business_email.trim().toLowerCase() || null,
     website: normaliseWebsite(values.website),
     facebook_url: normaliseWebsite(values.facebook_url),
@@ -289,8 +341,9 @@ export function logBusinessActivity(businessId: string, kind: BusinessActivityKi
 }
 
 // ----------------------------------------------------------- writes ----
-// Plain client-side table access under businesses' RLS (owner-only write,
-// members read) -- no RPC needed, nothing here touches another member's row.
+// Plain client-side table access under businesses' RLS (owner-only read and
+// write since 0029) -- no RPC needed, nothing here touches another member's
+// row.
 
 export async function getMyBusinesses(ownerId: string): Promise<BusinessRow[]> {
   const { data, error } = await supabase
@@ -301,6 +354,19 @@ export async function getMyBusinesses(ownerId: string): Promise<BusinessRow[]> {
 
   if (error) throw error
   return data ?? []
+}
+
+/** (10.4) One of the caller's own listings, for the edit page. The table's
+ * read policy is owner-only (0029), so this is null for anyone else's. */
+export async function getMyBusiness(businessId: string): Promise<BusinessRow | null> {
+  const { data, error } = await supabase
+    .from('businesses')
+    .select('*')
+    .eq('id', businessId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
 }
 
 export async function createBusiness(

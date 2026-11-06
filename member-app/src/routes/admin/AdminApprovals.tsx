@@ -3,17 +3,19 @@ import { useSearchParams } from 'react-router-dom'
 import { TabStrip } from '../../components/TabStrip'
 import { MemberApprovals } from '../../components/admin/MemberApprovals'
 import { EventApprovals } from '../../components/admin/EventApprovals'
-import { adminListEvents, adminListMembers } from '../../lib/admin'
+import { BusinessApprovals } from '../../components/admin/BusinessApprovals'
+import { adminListBusinesses, adminListEvents, adminListMembers } from '../../lib/admin'
 
 // (5a) Both approval queues in one place, instead of two separate pages
 // reached from the account menu. (5b-1) Now the Approvals section of the
 // console: AdminLayout owns the admin gate and the page chrome, so this is
-// just the Members / Events tab strip over the two panels.
+// just the Members / Events tab strip over the two panels. (10.5) + new
+// business listings.
 
-type ApprovalTab = 'members' | 'events'
+type ApprovalTab = 'members' | 'events' | 'businesses'
 
 function isApprovalTab(value: string | null): value is ApprovalTab {
-  return value === 'members' || value === 'events'
+  return value === 'members' || value === 'events' || value === 'businesses'
 }
 
 export function AdminApprovals() {
@@ -26,14 +28,17 @@ export function AdminApprovals() {
   // row), refetched whenever a panel reports a decision.
   const [memberCount, setMemberCount] = useState<number | null>(null)
   const [eventCount, setEventCount] = useState<number | null>(null)
+  const [businessCount, setBusinessCount] = useState<number | null>(null)
 
   const loadCounts = useCallback(async () => {
-    const [members, events] = await Promise.all([
+    const [members, events, businesses] = await Promise.all([
       adminListMembers({ status: 'pending', limit: 1 }),
       adminListEvents({ status: 'pending', limit: 1 }),
+      adminListBusinesses({ reviewStatus: 'pending', limit: 1 }),
     ])
     setMemberCount(members.length > 0 ? Number(members[0].total_count) : 0)
     setEventCount(events.length > 0 ? Number(events[0].total_count) : 0)
+    setBusinessCount(businesses.length > 0 ? Number(businesses[0].total_count) : 0)
   }, [])
 
   useEffect(() => {
@@ -57,6 +62,7 @@ export function AdminApprovals() {
         tabs={[
           { key: 'members' as const, label: label('Members', memberCount) },
           { key: 'events' as const, label: label('Events', eventCount) },
+          { key: 'businesses' as const, label: label('Businesses', businessCount) },
         ]}
         active={tab}
         onChange={(key) => {
@@ -71,8 +77,10 @@ export function AdminApprovals() {
 
       {tab === 'members' ? (
         <MemberApprovals onChanged={loadCounts} />
-      ) : (
+      ) : tab === 'events' ? (
         <EventApprovals onChanged={loadCounts} />
+      ) : (
+        <BusinessApprovals onChanged={loadCounts} />
       )}
     </div>
   )

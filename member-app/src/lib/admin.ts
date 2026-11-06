@@ -7,6 +7,7 @@ import type {
   AdminBusinessReportRow,
   AdminBusinessRow,
   AdminListRow,
+  BusinessReviewStatus,
   AdminMemberRow,
   AdminOverviewStats,
   AdminRoleName,
@@ -224,6 +225,9 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   business_verified: 'Verified business listing',
   business_unverified: 'Removed business verification',
   business_report_resolved: 'Resolved business report',
+  business_approved: 'Approved business listing',
+  business_changes_requested: 'Asked for listing changes',
+  business_rejected: 'Turned down business listing',
   admin_granted: 'Made admin',
   admin_role_changed: 'Changed admin role',
   admin_revoked: 'Removed admin',
@@ -279,6 +283,8 @@ export async function adminListBusinesses(params: {
   category?: string | null
   limit?: number
   offset?: number
+  /** (0030) Defaults to live (approved) listings; null = any. */
+  reviewStatus?: BusinessReviewStatus | null
 }): Promise<AdminBusinessRow[]> {
   const { data, error } = await supabase.rpc('admin_list_businesses', {
     p_hidden: params.hidden ?? null,
@@ -286,6 +292,7 @@ export async function adminListBusinesses(params: {
     p_category: params.category ?? null,
     p_limit: params.limit ?? 25,
     p_offset: params.offset ?? 0,
+    p_review_status: params.reviewStatus === undefined ? 'approved' : params.reviewStatus,
   })
   if (error) throw error
   return data ?? []
@@ -314,6 +321,21 @@ export async function adminSetBusinessVerified(
     p_business_id: businessId,
     p_verified: verified,
     p_note: note?.trim() || null,
+  })
+  if (error) throw error
+}
+
+/** (0030) Decide a pending listing. The note is required unless approving;
+ *  the owner sees it. */
+export async function adminSetBusinessReview(
+  businessId: string,
+  status: Exclude<BusinessReviewStatus, 'pending'>,
+  note: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_business_review', {
+    p_business_id: businessId,
+    p_status: status,
+    p_note: note.trim() || null,
   })
   if (error) throw error
 }

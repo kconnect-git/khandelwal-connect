@@ -23,6 +23,8 @@ import { MemberProfile } from './routes/MemberProfile'
 import { BusinessHub } from './routes/BusinessHub'
 import { Businesses } from './routes/Businesses'
 import { BusinessDetail } from './routes/BusinessDetail'
+import { BusinessEditPage } from './routes/BusinessEditPage'
+import { MyBusinesses } from './routes/MyBusinesses'
 import { Events } from './routes/Events'
 import { Explore } from './routes/Explore'
 import { MyEvents } from './routes/MyEvents'
@@ -165,9 +167,14 @@ export default function App() {
                       for bookmarks / stale links. */}
                   <Route path="/profile/edit" element={<Navigate to="/profile" replace />} />
                   <Route path="/family-details" element={<Navigate to="/profile" replace />} />
+                  {/* Phase 10.5: the owner's listings and their review status. */}
                   <Route
                     path="/businesses/mine"
-                    element={<Navigate to="/profile?tab=business" replace />}
+                    element={
+                      <AuthGate key="my-businesses" requireComplete>
+                        <MyBusinesses />
+                      </AuthGate>
+                    }
                   />
                   <Route
                     path="/directory"
@@ -218,11 +225,30 @@ export default function App() {
                       </AuthGate>
                     }
                   />
+                  {/* Phase 10.4: the listing form's own pages. /businesses/new
+                      sits before /businesses/:id to read clearly, though the
+                      router ranks the static segment first anyway. */}
+                  <Route
+                    path="/businesses/new"
+                    element={
+                      <AuthGate key="business-new" requireComplete>
+                        <BusinessEditPage mode="new" />
+                      </AuthGate>
+                    }
+                  />
                   <Route
                     path="/businesses/:id"
                     element={
                       <AuthGate key="business-detail" requireComplete>
                         <BusinessDetail />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/businesses/:id/edit"
+                    element={
+                      <AuthGate key="business-edit" requireComplete>
+                        <BusinessEditPage mode="edit" />
                       </AuthGate>
                     }
                   />

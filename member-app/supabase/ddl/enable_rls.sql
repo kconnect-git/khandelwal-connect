@@ -47,15 +47,17 @@ create policy "own family relations update" on family_relations for update
 create policy "own family relations delete" on family_relations for delete
   using (person_id in (select id from people where auth.uid() = auth_user_id));
 
--- Phase 3b (0014): businesses -- any approved member reads, owner writes.
+-- Phase 3b (0014): businesses -- owner writes; reads see below.
 -- (0019) Reading is now gated on approval, not merely on having onboarded.
 -- The owner clause matters: getMyBusinesses() in lib/businesses.ts selects
 -- this table directly, so without it a member awaiting approval would lose
 -- their own Profile > Business tab.
 -- (0021) A listing an admin has hidden is readable by its owner only.
-create policy "members read businesses" on businesses for select
-  using ((is_approved_member() and not is_hidden)
-         or owner_id in (select id from people where auth_user_id = auth.uid()));
+-- (0029) Tightened to the owner's own rows, as "own businesses read": every
+-- cross-member read goes through a security-definer RPC, and a direct
+-- select * would leak a phone the owner chose to hide (show_phone).
+create policy "own businesses read" on businesses for select
+  using (owner_id in (select id from people where auth_user_id = auth.uid()));
 
 create policy "own business insert" on businesses for insert
   with check (owner_id in (select id from people where auth_user_id = auth.uid()));

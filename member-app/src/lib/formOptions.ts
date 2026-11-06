@@ -52,6 +52,17 @@ export const BUSINESS_TYPE_OPTIONS: Option[] = [
   'Other',
 ].map((value) => ({ value, label: value }))
 
+// (0029) "Your role" on a listing. Mirrored by businesses_owner_role_check.
+export const BUSINESS_ROLE_OPTIONS: Option[] = [
+  'Owner / Proprietor',
+  'Partner',
+  'Founder / Co-founder',
+  'Director',
+  'Manager',
+  'Family member',
+  'Other',
+].map((value) => ({ value, label: value }))
+
 // Fixed list, mirrored by the visibility check constraint on events (0018).
 export const EVENT_VISIBILITY_OPTIONS: Option[] = [
   { value: 'members', label: 'All members' },

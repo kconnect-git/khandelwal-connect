@@ -476,6 +476,25 @@ create table businesses (
   -- (0028) What the listing offers, shown as chips on the detail page. Replaces
   -- primary_product (copied in by 0028), which is no longer edited or read.
   products text[] not null default '{}',
+  -- (0029) What the owner is to the business (BUSINESS_ROLE_OPTIONS), and
+  -- the "Show this number on the listing" box: when false the member-facing
+  -- RPCs return a null contact_phone.
+  owner_role text
+    check (owner_role is null or owner_role in (
+      'Owner / Proprietor', 'Partner', 'Founder / Co-founder', 'Director',
+      'Manager', 'Family member', 'Other'
+    )),
+  show_phone boolean not null default true,
+  -- (0030) Listing approval. New listings start pending; members only see
+  -- approved ones. review_note is shown to the owner. Write-protected from
+  -- the client by businesses_protect_moderation_columns, which also moves
+  -- the review along on an owner's edit; admin_set_business_review decides.
+  review_status text not null default 'pending'
+    check (review_status in ('pending', 'approved', 'changes_requested', 'rejected')),
+  review_note text,
+  reviewed_by uuid references auth.users(id),
+  reviewed_at timestamptz,
+  submitted_at timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -492,6 +511,7 @@ alter table businesses
   );
 
 create index businesses_owner_id_idx on businesses (owner_id);
+create index businesses_review_idx on businesses (review_status, submitted_at);
 
 -- (0028) <= 20 products, each 1-60 characters once trimmed.
 create or replace function business_products_valid(p_products text[])
@@ -556,7 +576,8 @@ create index business_activity_business_day_idx
 -- through PostgREST. On insert the columns are reset rather than refused --
 -- a fresh listing is never hidden, and createBusiness() shouldn't have to
 -- know these columns exist. (0027) The verified columns get the same
--- treatment.
+-- treatment. (0030) So do the review columns, and an owner's edit moves the
+-- review along (see the comments inside).
 create or replace function businesses_protect_moderation_columns()
 returns trigger
 language plpgsql
@@ -571,6 +592,11 @@ begin
       new.is_verified := false;
       new.verified_by := null;
       new.verified_at := null;
+      new.review_status := 'pending';
+      new.review_note := null;
+      new.reviewed_by := null;
+      new.reviewed_at := null;
+      new.submitted_at := now();
     else
       if (new.is_hidden, new.hidden_reason, new.hidden_by, new.hidden_at)
          is distinct from
@@ -581,6 +607,31 @@ begin
          is distinct from
          (old.is_verified, old.verified_by, old.verified_at) then
         raise exception 'Only an admin can verify a listing';
+      end if;
+      if (new.review_status, new.review_note, new.reviewed_by, new.reviewed_at, new.submitted_at)
+         is distinct from
+         (old.review_status, old.review_note, old.reviewed_by, old.reviewed_at, old.submitted_at) then
+        raise exception 'Only an admin can approve a listing';
+      end if;
+
+      -- (0030) What an owner's edit does to the review.
+      if old.review_status = 'rejected' then
+        raise exception 'This listing was turned down. You can remove it, or list your business again.';
+      elsif old.review_status = 'changes_requested' then
+        -- Saving is the resubmission. The note stays so the admin sees what
+        -- they asked for.
+        new.review_status := 'pending';
+        new.submitted_at := now();
+      elsif old.review_status = 'approved'
+            and (new.name, new.category) is distinct from (old.name, old.category) then
+        -- Effectively a different business: review it again, and drop any
+        -- verification an admin gave the old one.
+        new.review_status := 'pending';
+        new.review_note := null;
+        new.submitted_at := now();
+        new.is_verified := false;
+        new.verified_by := null;
+        new.verified_at := null;
       end if;
     end if;
   end if;
@@ -1362,7 +1413,8 @@ security definer
 set search_path = public
 as $$
   select b.id, b.name, b.category, b.description, b.city, b.state,
-         b.contact_phone, b.website, b.logo_url, b.is_verified,
+         case when b.show_phone then b.contact_phone end as contact_phone,
+         b.website, b.logo_url, b.is_verified,
          p.id as owner_id, p.full_name as owner_name, p.profile_photo_url as owner_photo_url,
          p.member_code as owner_member_code,
          count(*) over () as total_count
@@ -1371,6 +1423,7 @@ as $$
   where is_approved_member()
     and p.member_status = 'approved'
     and not b.is_hidden
+    and b.review_status = 'approved'
     and (p_search is null or length(trim(p_search)) = 0
          or b.name ilike '%' || p_search || '%'
          or p.full_name ilike '%' || p_search || '%'
@@ -1423,7 +1476,8 @@ returns table (
   owner_id uuid,
   owner_name text,
   owner_photo_url text,
-  owner_member_code text
+  owner_member_code text,
+  owner_role text
 )
 language sql
 stable
@@ -1431,7 +1485,7 @@ security definer
 set search_path = public
 as $$
   select b.id, b.name, b.category, b.description, b.city, b.state,
-         b.contact_phone, b.website, b.logo_url,
+         case when b.show_phone then b.contact_phone end, b.website, b.logo_url,
          b.brand_name, b.address_line1, b.address_line2, b.business_email,
          b.business_type,
          b.facebook_url, b.instagram_url, b.linkedin_url, b.youtube_url,
@@ -1439,13 +1493,15 @@ as $$
          exists (select 1 from business_saves s
                  join people me on me.id = s.person_id
                  where me.auth_user_id = auth.uid() and s.business_id = b.id),
-         p.id, p.full_name, p.profile_photo_url, p.member_code
+         p.id, p.full_name, p.profile_photo_url, p.member_code,
+         b.owner_role
   from businesses b
   join people p on p.id = b.owner_id
   where b.id = p_business_id
     and is_approved_member()
     and p.member_status = 'approved'
-    and not b.is_hidden;
+    and not b.is_hidden
+    and b.review_status = 'approved';
 $$;
 
 revoke all on function get_business(uuid) from public;
@@ -1472,6 +1528,7 @@ as $$
     and is_approved_member()
     and p.member_status = 'approved'
     and not b.is_hidden
+    and b.review_status = 'approved'
   order by b.name asc, b.id asc;
 $$;
 
@@ -1491,15 +1548,15 @@ as $$
   from (
     select 'category' as kind, b.category as value
     from businesses b join people p on p.id = b.owner_id
-    where p.member_status = 'approved' and not b.is_hidden and b.category is not null
+    where p.member_status = 'approved' and not b.is_hidden and b.review_status = 'approved' and b.category is not null
     union
     select 'city', b.city
     from businesses b join people p on p.id = b.owner_id
-    where p.member_status = 'approved' and not b.is_hidden and b.city is not null
+    where p.member_status = 'approved' and not b.is_hidden and b.review_status = 'approved' and b.city is not null
     union
     select 'state', b.state
     from businesses b join people p on p.id = b.owner_id
-    where p.member_status = 'approved' and not b.is_hidden and b.state is not null
+    where p.member_status = 'approved' and not b.is_hidden and b.review_status = 'approved' and b.state is not null
   ) f
   where is_approved_member()
   order by f.kind, f.value;
@@ -2706,6 +2763,7 @@ as $$
     'events_upcoming', (select count(*) from events where status = 'approved' and starts_at >= now()),
     'businesses', (select count(*) from businesses),
     'businesses_hidden', (select count(*) from businesses where is_hidden),
+    'businesses_pending', (select count(*) from businesses where review_status = 'pending'),
     'notices_active', (select count(*) from notices
                        where status = 'published' and (expires_at is null or expires_at > now())),
     'matrimony_pending', (select count(*) from matrimony_profiles where status = 'pending'),
@@ -2731,7 +2789,8 @@ create or replace function admin_list_businesses(
   p_search text default null,
   p_category text default null,
   p_limit int default 25,
-  p_offset int default 0
+  p_offset int default 0,
+  p_review_status text default 'approved'
 )
 returns table (
   id uuid,
@@ -2741,11 +2800,17 @@ returns table (
   city text,
   state text,
   logo_url text,
+  description text,
+  products text[],
+  contact_phone text,
   is_hidden boolean,
   hidden_reason text,
   hidden_at timestamptz,
   is_verified boolean,
   verified_at timestamptz,
+  review_status text,
+  review_note text,
+  submitted_at timestamptz,
   owner_id uuid,
   owner_name text,
   owner_member_code text,
@@ -2759,28 +2824,32 @@ security definer
 set search_path = public
 as $$
   select b.id, b.name, b.brand_name, b.category, b.city, b.state, b.logo_url,
+         b.description, b.products, b.contact_phone,
          b.is_hidden, b.hidden_reason, b.hidden_at,
          b.is_verified, b.verified_at,
+         b.review_status, b.review_note, b.submitted_at,
          p.id, p.full_name, p.member_code, p.member_status,
          b.created_at,
          count(*) over ()
   from businesses b
   join people p on p.id = b.owner_id
   where is_admin()
+    and (p_review_status is null or b.review_status = p_review_status)
     and (p_hidden is null or b.is_hidden = p_hidden)
     and (p_category is null or b.category = p_category)
     and (p_search is null or length(trim(p_search)) = 0
          or b.name ilike '%' || trim(p_search) || '%'
          or b.brand_name ilike '%' || trim(p_search) || '%'
          or p.full_name ilike '%' || trim(p_search) || '%')
-  order by case when p_hidden then b.hidden_at end desc nulls last,
+  order by case when p_review_status = 'pending' then b.submitted_at end asc nulls last,
+           case when p_hidden then b.hidden_at end desc nulls last,
            b.name asc, b.id asc
   limit least(greatest(coalesce(p_limit, 25), 1), 100)
   offset greatest(coalesce(p_offset, 0), 0);
 $$;
 
-revoke all on function admin_list_businesses(boolean, text, text, int, int) from public;
-grant execute on function admin_list_businesses(boolean, text, text, int, int) to authenticated;
+revoke all on function admin_list_businesses(boolean, text, text, int, int, text) from public;
+grant execute on function admin_list_businesses(boolean, text, text, int, int, text) to authenticated;
 
 -- Hide (reason required -- the owner reads it) or unhide a listing. Any
 -- admin. Audited as business_hidden / business_unhidden.
@@ -2891,6 +2960,58 @@ $$;
 
 revoke all on function admin_set_business_verified(uuid, boolean, text) from public;
 grant execute on function admin_set_business_verified(uuid, boolean, text) to authenticated;
+
+-- (0030)
+-- Approve, ask for changes on, or turn down a pending listing. Any admin. A
+-- note is required unless approving; the owner sees it. Audited as
+-- business_approved / business_changes_requested / business_rejected.
+create or replace function admin_set_business_review(
+  p_business_id uuid,
+  p_status text,
+  p_note text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_business businesses%rowtype;
+  v_note text := nullif(trim(p_note), '');
+  v_admin_person_id uuid;
+begin
+  if not is_admin() then
+    raise exception 'Not an admin';
+  end if;
+  if p_status is null or p_status not in ('approved', 'changes_requested', 'rejected') then
+    raise exception 'Invalid status: %', p_status;
+  end if;
+  if p_status <> 'approved' and v_note is null then
+    raise exception 'Please tell the owner why';
+  end if;
+
+  select * into v_business from businesses where id = p_business_id for update;
+  if not found then
+    raise exception 'Listing not found';
+  end if;
+  if v_business.review_status <> 'pending' then
+    raise exception 'This listing is not awaiting review';
+  end if;
+
+  update businesses
+  set review_status = p_status,
+      review_note = case when p_status = 'approved' then null else v_note end,
+      reviewed_by = auth.uid(), reviewed_at = now(), updated_at = now()
+  where id = p_business_id;
+
+  select id into v_admin_person_id from people where auth_user_id = auth.uid();
+  insert into admin_audit_log (admin_id, action, target_type, target_id, notes)
+  values (v_admin_person_id, 'business_' || p_status, 'business', p_business_id, v_note);
+end;
+$$;
+
+revoke all on function admin_set_business_review(uuid, text, text) from public;
+grant execute on function admin_set_business_review(uuid, text, text) to authenticated;
 
 -- ================================================================
 -- Phase 10.3 (0028): business saves, reports, activity RPCs (the tables
