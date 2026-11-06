@@ -1,4 +1,4 @@
-# Khandelwal Connect — Project Context & Build Plan
+# KITE — Project Context & Build Plan
 
 This document captures all product, design, and technical decisions made during planning, for handoff to a development session (Claude Code or a developer). Read this fully before writing code.
 

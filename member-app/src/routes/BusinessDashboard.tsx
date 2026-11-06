@@ -362,7 +362,7 @@ function EnquiryItem({
               enquiry.from_phone,
               `Hi ${enquiry.from_name}, thanks for your enquiry about ${
                 enquiry.about ?? businessName
-              } on Khandelwal Connect.`,
+              } on KITE.`,
             )}
             target="_blank"
             rel="noreferrer"

@@ -6,7 +6,7 @@
 const KEY = 'kc.returnTo'
 
 // Never worth returning to: the auth screens themselves and the root.
-const IGNORED = new Set(['/', '/signup', '/verify', '/onboarding'])
+const IGNORED = new Set(['/', '/signin', '/join', '/signup', '/verify', '/onboarding'])
 
 function isSafePath(path: string): boolean {
   // Same-origin, absolute paths only -- no protocol-relative "//evil.com".

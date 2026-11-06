@@ -1,4 +1,4 @@
-# Khandelwal Connect — New Machine Setup & Claude Handoff
+# KITE — New Machine Setup & Claude Handoff
 
 Use this file to get the project running on a new computer and to give a new Claude Code session the context the old machine's Claude had. Written 12 Oct 2026, at commit `dc6b7da` ("Added Admin Tab" = Phase 5a).
 
@@ -71,7 +71,7 @@ Local dev talks to the **live** Supabase project. There's no local Supabase/Dock
   ```
   Secrets are already set on the project (they live in Supabase, not on your machine). You only need to re-set them if they change:
   ```bash
-  npx supabase secrets set RESEND_API_KEY=... RESEND_FROM_ADDRESS="Khandelwal Connect <...@lakshya-khandelwal.com>" SITE_URL=https://<your-vercel-domain>
+  npx supabase secrets set RESEND_API_KEY=... RESEND_FROM_ADDRESS="KITE <...@lakshya-khandelwal.com>" SITE_URL=https://<your-vercel-domain>
   ```
   (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` are injected by Supabase automatically.)
 - **Deploy order** when a change touches both: SQL migration → Edge Function → frontend.

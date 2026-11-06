@@ -32,7 +32,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 const SITE_URL = (Deno.env.get('SITE_URL') ?? 'https://khandelwal-connect.vercel.app').replace(/\/$/, '')
-const FROM_ADDRESS = Deno.env.get('RESEND_FROM_ADDRESS') ?? 'Khandelwal Connect <onboarding@resend.dev>'
+const FROM_ADDRESS = Deno.env.get('RESEND_FROM_ADDRESS') ?? 'KITE <onboarding@resend.dev>'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -80,20 +80,20 @@ function buildEmail(person: PersonRow, status: Status): { subject: string; html:
 
   if (status === 'approved') {
     return {
-      subject: 'Your Khandelwal Connect membership is approved',
+      subject: 'Your KITE membership is approved',
       html: wrap(`
         <p>Hi ${name},</p>
         <p>Your membership has been approved. You now have full access to the
         member directory, businesses and events.</p>
         ${person.member_code ? `<p><strong>Your member ID:</strong> ${escapeHtml(person.member_code)}</p>` : ''}
-        <p><a href="${SITE_URL}/dashboard" style="color: #FF4D2E; font-weight: 600;">Open Khandelwal Connect</a></p>
+        <p><a href="${SITE_URL}/dashboard" style="color: #FF4D2E; font-weight: 600;">Open KITE</a></p>
       `),
     }
   }
 
   if (status === 'info_requested') {
     return {
-      subject: 'More information needed for your Khandelwal Connect membership',
+      subject: 'More information needed for your KITE membership',
       html: wrap(`
         <p>Hi ${name},</p>
         <p>Before your membership can be approved, we need a little more
@@ -108,7 +108,7 @@ function buildEmail(person: PersonRow, status: Status): { subject: string; html:
   }
 
   return {
-    subject: 'About your Khandelwal Connect membership',
+    subject: 'About your KITE membership',
     html: wrap(`
       <p>Hi ${name},</p>
       <p>Your membership application was not approved.</p>

@@ -28,7 +28,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 const SITE_URL = (Deno.env.get('SITE_URL') ?? 'https://khandelwal-connect.vercel.app').replace(/\/$/, '')
-const FROM_ADDRESS = Deno.env.get('RESEND_FROM_ADDRESS') ?? 'Khandelwal Connect <onboarding@resend.dev>'
+const FROM_ADDRESS = Deno.env.get('RESEND_FROM_ADDRESS') ?? 'KITE <onboarding@resend.dev>'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
       <div style="font-family: sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
         <p>Hi ${escapeHtml(person.full_name)},</p>
         <p><strong>${safeOrganiser}</strong> has invited you to <strong>${safeTitle}</strong>
-        on Khandelwal Connect.</p>
+        on KITE.</p>
         <p>
           <strong>When:</strong> ${safeWhen}<br>
           ${safePlace ? `<strong>Where:</strong> ${safePlace}<br>` : ''}

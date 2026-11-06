@@ -25,7 +25,7 @@ export function AuthGate({ children, requireComplete = false, allowPending = fal
     // Remember where they were headed (e.g. an event deep link from an
     // invite email) so VerifyOtp can bring them back after login.
     setReturnTo(location.pathname + location.search)
-    return <Navigate to="/signup" replace />
+    return <Navigate to="/signin" replace />
   }
   if (status.state === 'incomplete' && requireComplete) {
     return <Navigate to="/onboarding" replace />

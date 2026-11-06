@@ -3,6 +3,8 @@
 @theme {
   --font-heading: "Archivo", system-ui, sans-serif;
   --font-body: "Hanken Grotesk", system-ui, sans-serif;
+  /* The landing's Devanagari tagline. */
+  --font-hindi: "Hind", system-ui, sans-serif;
 
   --color-bg: #0a0a0b;
   --color-surface: #17161a;
@@ -22,6 +24,16 @@
   --color-badge-live-fg: #4ade80;
   --color-badge-soon-bg: rgba(234, 179, 8, 0.15);
   --color-badge-soon-fg: #f5c451;
+
+  /* KITE brand: the kite's four panels (accent is the fourth) and the
+     always-dark trust block / auth side panel on the logged-out pages. */
+  --color-kite-blue: #8faeff;
+  --color-kite-pale: #f9c9bd;
+  --color-kite-deep: #d23f1c;
+  --color-panel-bg: #141416;
+  --color-panel-border: #2c2c32;
+  --color-panel-rule: #3a3a40;
+  --color-panel-muted: #c4c4ca;
 }
 
 :root[data-theme="light"] {
@@ -42,6 +54,8 @@
   --color-badge-live-fg: #15803d;
   --color-badge-soon-bg: rgba(234, 179, 8, 0.18);
   --color-badge-soon-fg: #a16207;
+
+  --color-kite-blue: #2f62d9;
 }
 
 html {

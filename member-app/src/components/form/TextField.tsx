@@ -11,6 +11,7 @@ type TextFieldProps = {
   /** Fixed, non-editable text shown before the input (e.g. a locked country code). */
   prefix?: string
   disabled?: boolean
+  autoComplete?: string
 }
 
 export function TextField({
@@ -25,6 +26,7 @@ export function TextField({
   maxLength,
   prefix,
   disabled,
+  autoComplete,
 }: TextFieldProps) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -45,6 +47,7 @@ export function TextField({
           max={max}
           maxLength={maxLength}
           disabled={disabled}
+          autoComplete={autoComplete}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="flex-1 min-w-0 bg-transparent px-3 py-2.5 outline-none disabled:cursor-not-allowed"

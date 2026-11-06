@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { ThemeProvider } from './context/ThemeContext'
 import { ProfileRefreshProvider, useProfileRefresh } from './context/ProfileRefreshContext'
 import { AdminProvider, useAdmin } from './context/AdminContext'
@@ -8,12 +8,13 @@ import { MatrimonyProvider } from './context/MatrimonyContext'
 import { NoticeBell } from './components/NoticeBell'
 import { ThemeToggle } from './components/ThemeToggle'
 import { UserMenu } from './components/UserMenu'
+import { KiteMark } from './components/kite/Brand'
 import { HeaderNav, BottomTabs } from './components/NavTabs'
 import { AuthGate } from './components/guards/AuthGate'
 import { useProfileStatus } from './hooks/useProfileStatus'
 import { supabase } from './utils/supabase'
 import { RootRedirect } from './routes/RootRedirect'
-import { Signup } from './routes/Signup'
+import { SignIn, Join } from './routes/Auth'
 import { VerifyOtp } from './routes/VerifyOtp'
 import { ProfileWizard } from './routes/wizard/ProfileWizard'
 import { Dashboard } from './routes/Dashboard'
@@ -55,6 +56,11 @@ import { MatrimonyProfilePage } from './routes/matrimony/MatrimonyProfilePage'
 import { PendingApproval } from './routes/PendingApproval'
 import { clearReturnTo } from './lib/returnTo'
 
+// (KITE) The logged-out pages bring their own header (landing) or full-screen
+// split layout (auth), so they skip the app chrome. At / a signed-in member
+// is redirected straight on, so the bare frame is never seen there.
+const BARE_PATHS = new Set(['/', '/signin', '/join', '/verify'])
+
 function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -84,14 +90,20 @@ function Layout({ children }: { children: React.ReactNode }) {
     clearReturnTo()
     await supabase.auth.signOut()
     setLoggingOut(false)
-    navigate('/signup', { replace: true })
+    navigate('/', { replace: true })
   }
+
+  if (BARE_PATHS.has(location.pathname)) return <>{children}</>
 
   return (
     <div className="min-h-svh flex flex-col">
       <header className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
         <div className="flex items-center gap-6">
-          <span className="font-heading font-semibold text-lg">Khandelwal Connect</span>
+          {/* "/" sends a signed-in member to their home screen (RootRedirect). */}
+          <Link to="/" aria-label="KITE home" className="inline-flex items-center gap-2 font-heading font-semibold text-lg">
+            <KiteMark className="w-[21px] h-6" />
+            KITE
+          </Link>
           {showNav && <HeaderNav isAdmin={isAdmin} />}
         </div>
         <div className="flex items-center gap-3">
@@ -129,7 +141,10 @@ export default function App() {
               <Layout>
                 <Routes>
                   <Route path="/" element={<RootRedirect />} />
-                  <Route path="/signup" element={<Signup />} />
+                  <Route path="/signin" element={<SignIn />} />
+                  <Route path="/join" element={<Join />} />
+                  {/* The pre-KITE sign-up path, kept for old links. */}
+                  <Route path="/signup" element={<Navigate to="/join" replace />} />
                   <Route path="/verify" element={<VerifyOtp />} />
                   <Route
                     path="/onboarding"

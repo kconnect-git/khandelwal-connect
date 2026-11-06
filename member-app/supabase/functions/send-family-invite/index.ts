@@ -11,7 +11,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.112.4'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 const SITE_URL = Deno.env.get('SITE_URL') ?? 'https://khandelwal-connect.vercel.app'
-const FROM_ADDRESS = Deno.env.get('RESEND_FROM_ADDRESS') ?? 'Khandelwal Connect <onboarding@resend.dev>'
+const FROM_ADDRESS = Deno.env.get('RESEND_FROM_ADDRESS') ?? 'KITE <onboarding@resend.dev>'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 
@@ -114,14 +114,14 @@ Deno.serve(async (req) => {
 
   const relationLabel = recipientRelationLabel(slot, self.gender)
   const safeName = escapeHtml(self.full_name)
-  const subject = `${self.full_name} invited you to join Khandelwal Connect`
+  const subject = `${self.full_name} invited you to join KITE`
   const html = `
     <div style="font-family: sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
       <p>Hey,</p>
       <p><strong>${safeName}</strong>, your ${relationLabel}, has invited you to join
-      <strong>Khandelwal Connect</strong> — a community platform connecting Khandelwal families
+      <strong>KITE</strong> — a community platform connecting Khandelwal families
       across India and beyond, including family trees, a member directory, and community events.</p>
-      <p><a href="${SITE_URL}" style="color: #FF4D2E; font-weight: 600;">Visit Khandelwal Connect</a></p>
+      <p><a href="${SITE_URL}" style="color: #FF4D2E; font-weight: 600;">Visit KITE</a></p>
       <p style="color: #666;">If you weren't expecting this, you can safely ignore this email.</p>
     </div>
   `

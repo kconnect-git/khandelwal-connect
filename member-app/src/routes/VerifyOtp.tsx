@@ -3,8 +3,13 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { createOwnPerson, getOwnPerson } from '../lib/people'
 import { consumeReturnTo } from '../lib/returnTo'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
+import { AuthHeading, AuthShell } from '../components/kite/AuthShell'
+import { pillPrimary } from '../components/kite/Brand'
+import type { AuthMode } from './Auth'
 
-type LocationState = { email: string }
+// `from` is which page sent the code, for the "use a different email" link.
+type LocationState = { email: string; from?: AuthMode }
 
 const RESEND_COOLDOWN_SECONDS = 30
 
@@ -12,6 +17,7 @@ export function VerifyOtp() {
   const navigate = useNavigate()
   const location = useLocation()
   const state = location.state as LocationState | null
+  useDocumentTitle('Enter your code | KITE')
 
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -27,10 +33,11 @@ export function VerifyOtp() {
   }, [cooldown])
 
   if (!state?.email) {
-    return <Navigate to="/signup" replace />
+    return <Navigate to="/signin" replace />
   }
 
   const { email } = state
+  const back = state.from === 'join' ? '/join' : '/signin'
 
   async function handleResend() {
     setResending(true)
@@ -97,12 +104,16 @@ export function VerifyOtp() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center px-5">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm flex flex-col gap-4">
-        <h1 className="font-heading text-2xl font-semibold">Enter your code</h1>
-        <p className="text-[var(--color-text-muted)]">
-          We sent a 6-digit code to <span className="text-[var(--color-text)]">{email}</span>.
-        </p>
+    <AuthShell back={{ to: back, label: 'Use a different email' }}>
+      <AuthHeading
+        title="Enter your code"
+        intro={
+          <>
+            We sent a 6-digit code to <span className="text-[var(--color-text)]">{email}</span>.
+          </>
+        }
+      />
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4.5">
 
         <label className="flex flex-col gap-1.5">
           <span className="text-sm text-[var(--color-text-muted)]">6-digit code</span>
@@ -124,7 +135,7 @@ export function VerifyOtp() {
         <button
           type="submit"
           disabled={loading || code.length !== 6}
-          className="rounded-lg bg-[var(--color-accent)] text-white font-medium py-2.5 hover:bg-[var(--color-accent-hover)] disabled:opacity-60 transition-colors"
+          className={`${pillPrimary} w-full mt-1.5`}
         >
           {loading ? 'Verifying…' : 'Verify'}
         </button>
@@ -133,7 +144,7 @@ export function VerifyOtp() {
           type="button"
           onClick={handleResend}
           disabled={resending || cooldown > 0}
-          className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-60 transition-colors"
+          className="min-h-11 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-60 transition-colors"
         >
           {resending
             ? 'Resending…'
@@ -142,6 +153,6 @@ export function VerifyOtp() {
               : 'Resend code'}
         </button>
       </form>
-    </div>
+    </AuthShell>
   )
 }

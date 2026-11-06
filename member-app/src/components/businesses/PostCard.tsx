@@ -74,7 +74,7 @@ export function PostCard({
       // Same tab: a window.open after an await is blocked on most phones.
       window.location.href = whatsAppLink(
         phone,
-        `Hi, I saw your Buy & Sell post "${post.title}" on Khandelwal Connect.`,
+        `Hi, I saw your Buy & Sell post "${post.title}" on KITE.`,
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not open this post.')
