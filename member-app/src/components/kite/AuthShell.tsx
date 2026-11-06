@@ -4,7 +4,8 @@ import { ThemeToggle } from '../ThemeToggle'
 import { FULL_NAME, KiteLogo, TAGLINE_HI } from './Brand'
 
 /** (KITE) The split layout around /signin, /join and /verify: the dark brand
- * panel on the left (a short strip above the form on phones) and the form. */
+ * panel on the left and the form. Phones drop the panel for the landing
+ * page's top bar, so the page doesn't open on a black strip. */
 export function AuthShell({
   back = { to: '/', label: 'Back to home' },
   children,
@@ -14,9 +15,17 @@ export function AuthShell({
 }) {
   return (
     <div className="min-h-svh flex flex-col md:flex-row text-[17px] leading-relaxed">
-      <aside className="md:flex-[1_1_420px] flex flex-col justify-between gap-8 p-5 sm:p-8 md:p-12 bg-[var(--color-panel-bg)] text-white">
+      <header className="md:hidden sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-bg)]/95 backdrop-blur">
+        <div className="px-4 sm:px-8 flex items-center gap-3 py-3.5">
+          <KiteLogo label="Back to the KITE home page" />
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
+        </div>
+      </header>
+      <aside className="hidden md:flex md:flex-[1_1_420px] flex-col justify-between gap-8 p-12 bg-[var(--color-panel-bg)] text-white">
         <KiteLogo label="Back to the KITE home page" />
-        <div className="hidden md:block">
+        <div>
           <p lang="hi" className="mb-4 font-hindi font-semibold text-[22px] leading-snug text-[#ff8468]">
             {TAGLINE_HI}
           </p>
@@ -24,7 +33,7 @@ export function AuthShell({
             No Khandelwal is a stranger to another.
           </p>
         </div>
-        <p className="hidden md:block text-[15px] text-[var(--color-panel-muted)]">{FULL_NAME}</p>
+        <p className="text-[15px] text-[var(--color-panel-muted)]">{FULL_NAME}</p>
       </aside>
       <main className="flex-1 md:flex-[1_1_480px] flex flex-col gap-8 px-4 sm:px-8 md:px-12 py-6 md:py-12">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -34,7 +43,10 @@ export function AuthShell({
           >
             ← {back.label}
           </Link>
-          <ThemeToggle />
+          {/* On phones the toggle is in the top bar. */}
+          <div className="hidden md:block">
+            <ThemeToggle />
+          </div>
         </div>
         <div className="w-full max-w-[420px] m-auto">{children}</div>
       </main>
