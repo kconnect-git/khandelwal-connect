@@ -23,6 +23,9 @@ import { MemberProfile } from './routes/MemberProfile'
 import { BusinessHub } from './routes/BusinessHub'
 import { BuySell } from './routes/BuySell'
 import { BuySellNew } from './routes/BuySellNew'
+import { Referrals } from './routes/Referrals'
+import { ReferralNew } from './routes/ReferralNew'
+import { BusinessDashboard } from './routes/BusinessDashboard'
 import { Businesses } from './routes/Businesses'
 import { BusinessDetail } from './routes/BusinessDetail'
 import { BusinessEditPage } from './routes/BusinessEditPage'
@@ -233,6 +236,32 @@ export default function App() {
                     element={
                       <AuthGate key="buy-sell-new" requireComplete>
                         <BuySellNew />
+                      </AuthGate>
+                    }
+                  />
+                  {/* Phase 10.7: Referrals. */}
+                  <Route
+                    path="/business/referrals"
+                    element={
+                      <AuthGate key="referrals" requireComplete>
+                        <Referrals />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/business/referrals/new"
+                    element={
+                      <AuthGate key="referral-new" requireComplete>
+                        <ReferralNew />
+                      </AuthGate>
+                    }
+                  />
+                  {/* Phase 10.8: the owner's dashboard. */}
+                  <Route
+                    path="/business/dashboard"
+                    element={
+                      <AuthGate key="business-dashboard" requireComplete>
+                        <BusinessDashboard />
                       </AuthGate>
                     }
                   />

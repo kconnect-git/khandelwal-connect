@@ -28,7 +28,9 @@ const EMPTY_MESSAGES: Record<Tab, string> = {
 export function BuySell() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = tabFromParam(searchParams.get('tab'))
-  const [category, setCategory] = useState('')
+  // (10.8) The dashboard's "requirements match your category" lands here
+  // with ?category=.
+  const [category, setCategory] = useState(searchParams.get('category') ?? '')
   const [savedOnly, setSavedOnly] = useState(false)
   const [posts, setPosts] = useState<BusinessPostRow[]>([])
   const [total, setTotal] = useState<number | null>(null)

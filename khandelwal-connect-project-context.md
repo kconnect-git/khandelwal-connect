@@ -117,6 +117,9 @@ Phase 10 (KC Business — plan in `phase-10-plan.md`, built one screen at a time
 - ✅ 10.4 List your business: `/businesses/new` + `/businesses/:id/edit` with profile prefill, owner role, "show this number", required city/state/phone; Profile > Business becomes a compact list; table read policy tightened to owner-only (migration `0029`). See `phase-10.4-summary.md`.
 - ✅ 10.5 My businesses + listing approval: `/businesses/mine` with status badges; new listings start Pending and go live on admin approval (Approvals › Businesses tab); name/industry edits re-review and clear Verified; turned down is final (migration `0030`). See `phase-10.5-summary.md`.
 - ✅ 10.6 Buy & Sell: `/business/market` (Requirements / Offers / Mine) and `/business/market/new`; any approved member posts (optionally as a listing), Respond records it and opens WhatsApp, saves, 30-day expiry with close/renew, post reports share the business Reports tab (migration `0031`). See `phase-10.6-summary.md`.
+- ✅ 10.7 Referrals: `/business/referrals` (Given / Received / Closed counters, Received / Given tabs) and `/business/referrals/new`, plus "Refer someone" on business detail; lead can be anyone, consent required, phone cleared on decline/close; New → In talks → Business done / Didn't work out (migration `0032`). See `phase-10.7-summary.md`.
+- ✅ 10.8 My Business Dashboard: `/business/dashboard` (listing completeness, this month's views / calls / WhatsApp taps / enquiries, open enquiries with Reply, referrals and Buy & Sell leads, matching requirements) and an Enquire button on business detail (migration `0033`). See `phase-10.8-summary.md`.
+- **Phase 10 is complete.** Hub tiles still "Soon": Products & Services, Meetings & Events.
 
 **Immediate next step:** apply `0025` and smoke-test (`phase-6c-summary.md` §5), then start Phase 7 (hardening & launch prep).
 

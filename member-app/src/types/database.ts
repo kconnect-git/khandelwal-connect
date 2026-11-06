@@ -620,6 +620,83 @@ export type BusinessPostResponder = {
   created_at: string
 }
 
+// ================================================================
+// Phase 10.7 (0032): Referrals
+// ================================================================
+
+export type ReferralStatus = 'new' | 'in_talks' | 'declined' | 'closed'
+export type ReferralOutcome = 'won' | 'lost'
+
+/** One row of list_business_referrals. lead_phone is null once the referral
+ *  is declined or closed (or when a member lead hides their number). */
+export type BusinessReferralRow = {
+  id: string
+  status: ReferralStatus
+  outcome: ReferralOutcome | null
+  decline_reason: string | null
+  note: string
+  created_at: string
+  responded_at: string | null
+  closed_at: string | null
+  lead_name: string
+  lead_phone: string | null
+  lead_person_id: string | null
+  lead_member_code: string | null
+  business_id: string
+  business_name: string
+  business_logo_url: string | null
+  owner_name: string
+  referrer_id: string
+  referrer_name: string
+  referrer_photo_url: string | null
+  total_count: number
+}
+
+export type ReferralCounts = {
+  given: number
+  received: number
+  closed: number
+  won: number
+  received_new: number
+}
+
+// ================================================================
+// Phase 10.8 (0033): enquiries + the owner's dashboard
+// ================================================================
+
+/** One row of list_business_enquiries. from_phone is null when the member
+ *  hides their number. about null = a general enquiry. */
+export type BusinessEnquiryRow = {
+  id: string
+  about: string | null
+  message: string
+  status: 'new' | 'done'
+  created_at: string
+  done_at: string | null
+  from_person_id: string
+  from_name: string
+  from_photo_url: string | null
+  from_member_code: string | null
+  from_phone: string | null
+  total_count: number
+}
+
+/** business_dashboard(): this calendar month (India time) unless noted. */
+export type BusinessDashboardStats = {
+  month_start: string
+  views: number
+  calls: number
+  whatsapp: number
+  enquiries: number
+  /** All open, not just this month. */
+  enquiries_new: number
+  referrals_new: number
+  referrals_in_talks: number
+  post_responses: number
+  /** Live Buy & Sell requirements in the listing's industry. */
+  matching_requirements: number
+}
+
 /** One row of admin_list_business_reports. */
 export type AdminBusinessReportRow = {
   id: string
@@ -936,6 +1013,60 @@ export type Database = {
       // (0027)
       admin_set_business_verified: {
         Args: { p_business_id: string; p_verified: boolean; p_note?: string | null }
+        Returns: void
+      }
+      // (0033) enquiries + dashboard
+      send_business_enquiry: {
+        Args: { p_business_id: string; p_about: string | null; p_message: string }
+        Returns: string
+      }
+      list_business_enquiries: {
+        Args: {
+          p_business_id: string
+          p_status?: 'new' | 'done' | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: BusinessEnquiryRow[]
+      }
+      set_business_enquiry_done: {
+        Args: { p_enquiry_id: string; p_done: boolean }
+        Returns: void
+      }
+      business_dashboard: {
+        Args: { p_business_id: string }
+        Returns: BusinessDashboardStats
+      }
+      // (0032) Referrals
+      give_business_referral: {
+        Args: {
+          p_business_id: string
+          p_lead_name: string
+          p_lead_phone: string | null
+          p_lead_person_id: string | null
+          p_note: string
+          p_consent: boolean
+        }
+        Returns: string
+      }
+      list_business_referrals: {
+        Args: { p_direction?: 'received' | 'given'; p_limit?: number; p_offset?: number }
+        Returns: BusinessReferralRow[]
+      }
+      business_referral_counts: {
+        Args: Record<PropertyKey, never>
+        Returns: ReferralCounts
+      }
+      respond_business_referral: {
+        Args: { p_referral_id: string; p_accept: boolean; p_reason?: string | null }
+        Returns: void
+      }
+      close_business_referral: {
+        Args: { p_referral_id: string; p_outcome: ReferralOutcome }
+        Returns: void
+      }
+      withdraw_business_referral: {
+        Args: { p_referral_id: string }
         Returns: void
       }
       // (0031) Buy & Sell

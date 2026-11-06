@@ -67,9 +67,14 @@ export function MyBusinessesList({
               <BusinessStatusBadge status={business.review_status} />
               <div className="ml-auto flex items-center gap-2">
                 {live && (
-                  <Link to={`/businesses/${business.id}`} className={ROW_BUTTON}>
-                    View
-                  </Link>
+                  <>
+                    <Link to={`/business/dashboard?business=${business.id}`} className={ROW_BUTTON}>
+                      Dashboard
+                    </Link>
+                    <Link to={`/businesses/${business.id}`} className={ROW_BUTTON}>
+                      View
+                    </Link>
+                  </>
                 )}
                 {business.review_status === 'rejected' ? (
                   <button type="button" onClick={() => onRemove(business)} className={ROW_BUTTON}>

@@ -14,6 +14,8 @@ import {
 import { Avatar } from '../components/Avatar'
 import { ReportDialog } from '../components/ReportDialog'
 import { VerifiedTag } from '../components/businesses/VerifiedTag'
+import { EnquiryDialog } from '../components/businesses/EnquiryDialog'
+import { sendBusinessEnquiry } from '../lib/businessDashboard'
 
 const ACTION_BUTTON =
   'rounded-lg border border-[var(--color-border)] py-2.5 text-sm font-semibold hover:border-[var(--color-text-muted)] disabled:opacity-60 transition-colors'
@@ -63,6 +65,10 @@ export function BusinessDetail() {
   const [reportBusy, setReportBusy] = useState(false)
   const [reported, setReported] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  // (10.8) Enquire: undefined = closed; null = General; a string = that product.
+  const [enquiryAbout, setEnquiryAbout] = useState<string | null | undefined>(undefined)
+  const [enquiryBusy, setEnquiryBusy] = useState(false)
+  const [enquirySent, setEnquirySent] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -174,6 +180,21 @@ export function BusinessDetail() {
     }
   }
 
+  async function handleEnquiry(about: string | null, message: string) {
+    setEnquiryBusy(true)
+    setActionError(null)
+    try {
+      await sendBusinessEnquiry(listing.id, about, message)
+      setEnquirySent(true)
+    } catch (err) {
+      console.error('[BusinessDetail] failed to send enquiry', err)
+      setActionError(err instanceof Error ? err.message : 'Could not send your enquiry.')
+    } finally {
+      setEnquiryAbout(undefined)
+      setEnquiryBusy(false)
+    }
+  }
+
   async function handleReport(reason: string, details: string) {
     setReportBusy(true)
     setActionError(null)
@@ -222,7 +243,9 @@ export function BusinessDetail() {
           Edit listing
         </Link>
       ) : (
-        (business.contact_phone || business.website) && (
+        // (10.8) Always shown to other members: Enquire works even when the
+        // owner hides their number.
+        (
           <div className="flex flex-wrap gap-2">
             {business.contact_phone && (
               <>
@@ -254,8 +277,21 @@ export function BusinessDetail() {
                 Website
               </a>
             )}
+            <button
+              type="button"
+              onClick={() => setEnquiryAbout(null)}
+              disabled={enquirySent}
+              className="rounded-full border border-[var(--color-border)] px-6 py-2.5 text-sm font-semibold hover:border-[var(--color-text-muted)] disabled:opacity-60 transition-colors"
+            >
+              {enquirySent ? 'Enquiry sent' : 'Enquire'}
+            </button>
           </div>
         )
+      )}
+      {enquirySent && (
+        <p className="text-sm text-[var(--color-text-muted)]">
+          Sent — {business.owner_name} will see it on their dashboard.
+        </p>
       )}
 
       {business.description && (
@@ -274,11 +310,21 @@ export function BusinessDetail() {
           </h2>
           <ul className="flex flex-wrap gap-2">
             {business.products.map((product) => (
-              <li
-                key={product}
-                className="rounded-full border border-[var(--color-border)] px-4 py-1.5 text-sm"
-              >
-                {product}
+              <li key={product}>
+                {/* (10.8) Tap a product to ask about it. */}
+                {isOwner || enquirySent ? (
+                  <span className="block rounded-full border border-[var(--color-border)] px-4 py-1.5 text-sm">
+                    {product}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEnquiryAbout(product)}
+                    className="rounded-full border border-[var(--color-border)] px-4 py-1.5 text-sm hover:border-[var(--color-text-muted)] transition-colors"
+                  >
+                    {product}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -352,6 +398,15 @@ export function BusinessDetail() {
             </>
           )}
         </div>
+        {/* (10.7) Pass someone who needs this business to its owner. */}
+        {!isOwner && (
+          <Link
+            to={`/business/referrals/new?business=${business.id}`}
+            className={`${ACTION_BUTTON} text-center`}
+          >
+            Refer someone
+          </Link>
+        )}
         {reported && (
           <p className="text-sm text-[var(--color-text-muted)]">
             Thanks — the admins will take a look.
@@ -378,6 +433,15 @@ export function BusinessDetail() {
         </Link>
       </section>
 
+      <EnquiryDialog
+        open={enquiryAbout !== undefined}
+        businessName={business.name}
+        products={business.products}
+        initialAbout={enquiryAbout ?? null}
+        busy={enquiryBusy}
+        onSubmit={({ about, message }) => handleEnquiry(about, message)}
+        onCancel={() => setEnquiryAbout(undefined)}
+      />
       <ReportDialog
         open={reportOpen}
         name={business.name}

@@ -5,7 +5,8 @@ import { SectionTiles, Svg, type IconProps, type Section } from '../components/S
 
 // (10.1) KC Business hub: one landing page for every business module. Each
 // Soon tile gets a `to` in the sub-phase that builds it (see
-// phase-10-plan.md): the directory in 10.1, Buy & Sell in 10.6.
+// phase-10-plan.md): the directory in 10.1, Buy & Sell in 10.6, Referrals
+// in 10.7, the dashboard in 10.8.
 
 function DirectoryIcon({ size }: IconProps) {
   return (
@@ -72,10 +73,10 @@ function SearchIcon({ size }: IconProps) {
 const SECTIONS: Section[] = [
   { label: 'Business Directory', blurb: 'Discover members and companies', icon: DirectoryIcon, tone: 'cool', to: '/businesses' },
   { label: 'Buy & Sell', blurb: 'Requirements and offers', icon: SwapIcon, tone: 'warm', to: '/business/market' },
-  { label: 'Referrals', blurb: 'Give, receive and track', icon: ReferralIcon, tone: 'cool' },
+  { label: 'Referrals', blurb: 'Give, receive and track', icon: ReferralIcon, tone: 'cool', to: '/business/referrals' },
   { label: 'Products & Services', blurb: 'Company catalogues', icon: BoxIcon, tone: 'warm' },
   { label: 'Meetings & Events', blurb: 'Network and connect', icon: EventsIcon, tone: 'cool' },
-  { label: 'My Business Dashboard', blurb: 'My leads and opportunities', icon: ChartIcon, tone: 'warm' },
+  { label: 'My Business Dashboard', blurb: 'My leads and opportunities', icon: ChartIcon, tone: 'warm', to: '/business/dashboard' },
 ]
 
 export function BusinessHub() {
