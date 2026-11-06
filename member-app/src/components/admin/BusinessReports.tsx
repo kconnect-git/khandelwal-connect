@@ -7,6 +7,7 @@ import {
   adminListBusinessReports,
   adminResolveBusinessReport,
   adminSetBusinessHidden,
+  adminSetBusinessPostHidden,
   formatAdminDate,
 } from '../../lib/admin'
 import type { AdminBusinessReportRow } from '../../types/database'
@@ -14,12 +15,25 @@ import type { AdminBusinessReportRow } from '../../types/database'
 // Phase 10.3: member reports about business listings, the Reports tab of
 // /admin/businesses. Same shape as MatrimonyReports: admins see who
 // reported, the owner never does, and hiding the listing and resolving the
-// report are separate steps.
+// report are separate steps. (10.6) Reports on Buy & Sell posts land here
+// too: same row shape, with the poster in the owner columns.
 
 const PAGE_SIZE = 25
 
 type View = 'open' | 'resolved'
 type PendingAction = { report: AdminBusinessReportRow; kind: 'hide' | 'resolve' }
+
+/** What the report is about, and whether it's currently hidden. */
+function target(row: AdminBusinessReportRow): { label: string; hidden: boolean; isPost: boolean } {
+  if (row.post_id) {
+    return {
+      label: `Buy & Sell: ${row.post_title ?? 'post'}`,
+      hidden: row.post_is_hidden === true,
+      isPost: true,
+    }
+  }
+  return { label: row.business_name ?? 'Listing', hidden: row.business_is_hidden === true, isPost: false }
+}
 
 const ROW_BUTTON =
   'rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm whitespace-nowrap hover:bg-[var(--color-surface-hover)] disabled:opacity-50'
@@ -79,7 +93,11 @@ export function BusinessReports() {
     setError(null)
     try {
       if (pending.kind === 'hide') {
-        await adminSetBusinessHidden(pending.report.business_id, true, value)
+        if (pending.report.post_id) {
+          await adminSetBusinessPostHidden(pending.report.post_id, true, value)
+        } else if (pending.report.business_id) {
+          await adminSetBusinessHidden(pending.report.business_id, true, value)
+        }
       } else {
         await adminResolveBusinessReport(pending.report.id, value)
       }
@@ -123,10 +141,10 @@ export function BusinessReports() {
             rowKey={(row) => row.id}
             empty={view === 'open' ? 'No open reports.' : 'No resolved reports yet.'}
             primary={{
-              header: 'Reported listing',
+              header: 'Reported',
               cell: (row) => (
                 <div className="min-w-0">
-                  <p className="font-medium">{row.business_name}</p>
+                  <p className="font-medium">{target(row).label}</p>
                   <Link
                     to={`/admin/members/${row.owner_id}`}
                     className="text-xs text-[var(--color-text-muted)] underline-offset-2 hover:underline"
@@ -157,9 +175,9 @@ export function BusinessReports() {
                 ),
               },
               {
-                key: 'listing',
-                header: 'Listing',
-                cell: (row) => (row.business_is_hidden ? 'Hidden' : 'Visible'),
+                key: 'visibility',
+                header: 'Now',
+                cell: (row) => (target(row).hidden ? 'Hidden' : 'Visible'),
               },
               {
                 key: 'when',
@@ -190,19 +208,19 @@ export function BusinessReports() {
               <>
                 {/* The member-facing page only resolves for a visible
                     listing, so don't offer a link that would come up empty. */}
-                {!row.business_is_hidden && (
+                {row.business_id && !target(row).hidden && (
                   <Link to={`/businesses/${row.business_id}`} className={ROW_BUTTON}>
                     View listing
                   </Link>
                 )}
-                {row.status === 'open' && !row.business_is_hidden && (
+                {row.status === 'open' && !target(row).hidden && (
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => setAction({ report: row, kind: 'hide' })}
                     className={ROW_BUTTON}
                   >
-                    Hide listing
+                    {target(row).isPost ? 'Hide post' : 'Hide listing'}
                   </button>
                 )}
                 {row.status === 'open' && (
@@ -236,12 +254,14 @@ export function BusinessReports() {
         open={action !== null}
         title={
           action?.kind === 'hide'
-            ? `Hide "${action.report.business_name}"?`
+            ? `Hide "${action.report.post_title ?? action.report.business_name}"?`
             : 'Resolve this report?'
         }
         description={
           action?.kind === 'hide'
-            ? 'It disappears from the businesses directory and the owner’s member profile. The owner still sees it, with your reason. The report stays open until you resolve it.'
+            ? action.report.post_id
+              ? 'It disappears from Buy & Sell. The poster still sees it, with your reason. The report stays open until you resolve it.'
+              : 'It disappears from the businesses directory and the owner’s member profile. The owner still sees it, with your reason. The report stays open until you resolve it.'
             : 'It moves to Resolved. The reporter isn’t notified.'
         }
         prompt={

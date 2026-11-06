@@ -3,9 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { EventsIcon } from '../components/NavTabs'
 import { SectionTiles, Svg, type IconProps, type Section } from '../components/SectionTiles'
 
-// (10.1) KC Business hub: one landing page for every business module. Only
-// the directory is live; each Soon tile gets a `to` in the sub-phase that
-// builds it (see phase-10-plan.md).
+// (10.1) KC Business hub: one landing page for every business module. Each
+// Soon tile gets a `to` in the sub-phase that builds it (see
+// phase-10-plan.md): the directory in 10.1, Buy & Sell in 10.6.
 
 function DirectoryIcon({ size }: IconProps) {
   return (
@@ -71,7 +71,7 @@ function SearchIcon({ size }: IconProps) {
 
 const SECTIONS: Section[] = [
   { label: 'Business Directory', blurb: 'Discover members and companies', icon: DirectoryIcon, tone: 'cool', to: '/businesses' },
-  { label: 'Buy & Sell', blurb: 'Requirements and offers', icon: SwapIcon, tone: 'warm' },
+  { label: 'Buy & Sell', blurb: 'Requirements and offers', icon: SwapIcon, tone: 'warm', to: '/business/market' },
   { label: 'Referrals', blurb: 'Give, receive and track', icon: ReferralIcon, tone: 'cool' },
   { label: 'Products & Services', blurb: 'Company catalogues', icon: BoxIcon, tone: 'warm' },
   { label: 'Meetings & Events', blurb: 'Network and connect', icon: EventsIcon, tone: 'cool' },

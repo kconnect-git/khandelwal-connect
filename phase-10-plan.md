@@ -53,7 +53,7 @@ Each sub-phase is one screen, so it's small enough to ship and smoke-test alone.
 | **10.3** ✅ | Business detail | — | `0028` products, saves, reports, activity tracking |
 | **10.4** ✅ | List your business | 10.3 (products column) | `0029` show-phone, owner role, owner-only read policy |
 | **10.5** ✅ | My businesses | 10.4 | `0030` review status + admin queue |
-| **10.6** | Buy & Sell | 10.1 | `0031` posts |
+| **10.6** ✅ | Buy & Sell | 10.1 | `0031` posts, responses, saves, post reports |
 | **10.7** | Referrals | 10.1 | `0032` referrals |
 | **10.8** | My Business Dashboard | 10.3 tracking, 10.6, 10.7 | `0033` enquiries + stats RPC |
 
@@ -115,18 +115,14 @@ Activity tracking (views / calls / WhatsApp taps) ships in **10.3**, not 10.8, s
 - Admin: a third **Businesses** tab on `/admin/approvals` (with a count): Approve / Ask for changes / Turn down (note required), audited. The listing's description, products and phone are shown inline. There's an Overview tile "Business listings awaiting review". `/admin/businesses` Visible / Hidden list approved listings only.
 - **Exit:** a new listing shows "Pending review", is invisible to other members, and goes live once an admin approves it.
 
-### 10.6 — Buy & Sell (screen 7)
-- New `business_posts` table:
-  - `kind` (`requirement | offer`), `title`, `details`
-  - `quantity_or_budget` / `price_or_terms`
-  - `category` (same 15 values), `city`, `state`
-  - `poster_person_id`, optional `business_id`
-  - `status` (`open | closed`), `expires_at` (default 30 days), and the `is_hidden` moderation columns
-- Route **`/business/market`** with tabs **Requirements / Offers / Mine**. Cards show a "Looking for" or "Offering" pill, the date, the poster and their business. Each card has **Respond** and **Save** buttons.
-- **Respond** opens the poster's WhatsApp with a pre-filled message *and* records an enquiry (10.8).
-- "Post a requirement or offer" form. In Mine, the poster can close or delete their posts.
-- **Moderation:** posts go live without review (they're short-lived). Report and hide work as in 10.3.
-- **Exit:** member A posts a requirement, member B sees it and responds, and A can close it.
+### 10.6 — Buy & Sell (screen 7) — ✅ built, see `phase-10.6-summary.md`
+- Route **`/business/market`** with tabs **Requirements / Offers / Mine**, an Industry chip and a Saved chip. **`/business/market/new`** is the post form. The hub tile is Live.
+- **Any approved member can post** (decided in planning). A post can be attached to one of their approved listings, and the card then shows its name.
+- `business_posts`: kind, title, terms (quantity or budget / price or terms), details, industry, city, state, a per-post **contact number** (prefilled from the listing or the member's mobile, revealed only to members who Respond), open / closed, and a 30-day expiry (Renew restarts it).
+- **Respond** records a `business_post_responses` row, then opens the poster's WhatsApp with a prefilled message. The poster sees "N members responded" (with names) in Mine. **Save** uses `business_post_saves`.
+- **Moderation:** live at once. **Report** shares `business_reports` (now listing *or* post) and the admin Reports tab, where **Hide post** is audited.
+- 10.8's dashboard can count `business_post_responses` for posts attached to a listing.
+- **Exit:** member A posts a requirement, member B sees it and responds, and A sees the response and can close it.
 
 ### 10.7 — Referrals (screen 8)
 - New `business_referrals` table:

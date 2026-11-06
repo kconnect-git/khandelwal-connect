@@ -1,6 +1,7 @@
 import { TextField } from '../form/TextField'
 import { SelectField } from '../form/SelectField'
 import { ChipInput } from '../form/ChipInput'
+import { FromProfileLabel } from '../form/FromProfileLabel'
 import {
   BUSINESS_CATEGORY_OPTIONS,
   BUSINESS_ROLE_OPTIONS,
@@ -38,13 +39,7 @@ export function BusinessForm({ value, onChange, fromProfile }: BusinessFormProps
   }
 
   function label(text: string, key: keyof BusinessFormValues) {
-    if (!fromProfile?.has(key)) return text
-    return (
-      <span className="flex items-baseline justify-between gap-2">
-        <span>{text}</span>
-        <span className="text-xs font-medium text-[var(--color-accent)]">From your profile</span>
-      </span>
-    )
+    return <FromProfileLabel text={text} marked={fromProfile?.has(key) ?? false} />
   }
 
   return (

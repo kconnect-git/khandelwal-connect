@@ -574,6 +574,52 @@ export type BusinessReportReason =
   | "Not a member's business"
   | 'Other'
 
+// ================================================================
+// Phase 10.6 (0031): Buy & Sell
+// ================================================================
+
+export type BusinessPostKind = 'requirement' | 'offer'
+
+/** The effective state list_business_posts reports. */
+export type BusinessPostStatus = 'open' | 'closed' | 'expired' | 'hidden'
+
+/** One row of list_business_posts. No phone -- that only comes back from
+ *  respond_to_business_post. */
+export type BusinessPostRow = {
+  id: string
+  kind: BusinessPostKind
+  title: string
+  details: string | null
+  terms: string | null
+  category: string
+  city: string | null
+  state: string | null
+  created_at: string
+  expires_at: string
+  status: BusinessPostStatus
+  poster_id: string
+  poster_name: string
+  poster_photo_url: string | null
+  /** Only while the attached listing is itself live. */
+  business_id: string | null
+  business_name: string | null
+  is_mine: boolean
+  is_saved: boolean
+  has_responded: boolean
+  /** Own posts only. */
+  response_count: number | null
+  hidden_reason: string | null
+  total_count: number
+}
+
+export type BusinessPostResponder = {
+  person_id: string
+  full_name: string
+  profile_photo_url: string | null
+  member_code: string | null
+  created_at: string
+}
+
 /** One row of admin_list_business_reports. */
 export type AdminBusinessReportRow = {
   id: string
@@ -586,9 +632,16 @@ export type AdminBusinessReportRow = {
   resolved_by_name: string | null
   reporter_person_id: string
   reporter_name: string
-  business_id: string
-  business_name: string
-  business_is_hidden: boolean
+  /** (0031) A report is on a listing or on a Buy & Sell post: the business_*
+   *  fields are null for a post report, the post_* fields for a listing one.
+   *  For a post report owner_* is the poster. */
+  business_id: string | null
+  business_name: string | null
+  business_is_hidden: boolean | null
+  post_id: string | null
+  post_title: string | null
+  post_kind: BusinessPostKind | null
+  post_is_hidden: boolean | null
   owner_id: string
   owner_name: string
   owner_member_code: string | null
@@ -883,6 +936,61 @@ export type Database = {
       // (0027)
       admin_set_business_verified: {
         Args: { p_business_id: string; p_verified: boolean; p_note?: string | null }
+        Returns: void
+      }
+      // (0031) Buy & Sell
+      list_business_posts: {
+        Args: {
+          p_kind?: BusinessPostKind
+          p_category?: string | null
+          p_city?: string | null
+          p_saved_only?: boolean
+          p_mine?: boolean
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: BusinessPostRow[]
+      }
+      create_business_post: {
+        Args: {
+          p_kind: BusinessPostKind
+          p_title: string
+          p_details: string | null
+          p_terms: string | null
+          p_category: string
+          p_city: string | null
+          p_state: string | null
+          p_contact_phone: string
+          p_business_id?: string | null
+        }
+        Returns: string
+      }
+      set_business_post_open: {
+        Args: { p_post_id: string; p_open: boolean }
+        Returns: void
+      }
+      delete_business_post: {
+        Args: { p_post_id: string }
+        Returns: void
+      }
+      respond_to_business_post: {
+        Args: { p_post_id: string }
+        Returns: string
+      }
+      list_business_post_responses: {
+        Args: { p_post_id: string }
+        Returns: BusinessPostResponder[]
+      }
+      set_business_post_saved: {
+        Args: { p_post_id: string; p_saved: boolean }
+        Returns: void
+      }
+      report_business_post: {
+        Args: { p_post_id: string; p_reason: string; p_details?: string | null }
+        Returns: void
+      }
+      admin_set_business_post_hidden: {
+        Args: { p_post_id: string; p_hidden: boolean; p_reason?: string | null }
         Returns: void
       }
       // (0030)

@@ -21,6 +21,8 @@ import { Profile } from './routes/Profile'
 import { Directory } from './routes/Directory'
 import { MemberProfile } from './routes/MemberProfile'
 import { BusinessHub } from './routes/BusinessHub'
+import { BuySell } from './routes/BuySell'
+import { BuySellNew } from './routes/BuySellNew'
 import { Businesses } from './routes/Businesses'
 import { BusinessDetail } from './routes/BusinessDetail'
 import { BusinessEditPage } from './routes/BusinessEditPage'
@@ -214,6 +216,23 @@ export default function App() {
                     element={
                       <AuthGate key="business-hub" requireComplete>
                         <BusinessHub />
+                      </AuthGate>
+                    }
+                  />
+                  {/* Phase 10.6: Buy & Sell. */}
+                  <Route
+                    path="/business/market"
+                    element={
+                      <AuthGate key="buy-sell" requireComplete>
+                        <BuySell />
+                      </AuthGate>
+                    }
+                  />
+                  <Route
+                    path="/business/market/new"
+                    element={
+                      <AuthGate key="buy-sell-new" requireComplete>
+                        <BuySellNew />
                       </AuthGate>
                     }
                   />

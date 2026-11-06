@@ -113,5 +113,9 @@ alter table matrimony_reports enable row level security;
 alter table business_saves enable row level security;
 alter table business_reports enable row level security;
 alter table business_activity enable row level security;
+-- (0031) Phase 10.6 Buy & Sell, RPC-only.
+alter table business_posts enable row level security;
+alter table business_post_responses enable row level security;
+alter table business_post_saves enable row level security;
 
 -- everything else stays fully closed until you write real policies for it

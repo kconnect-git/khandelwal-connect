@@ -228,6 +228,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   business_approved: 'Approved business listing',
   business_changes_requested: 'Asked for listing changes',
   business_rejected: 'Turned down business listing',
+  business_post_hidden: 'Hid Buy & Sell post',
+  business_post_unhidden: 'Unhid Buy & Sell post',
   admin_granted: 'Made admin',
   admin_role_changed: 'Changed admin role',
   admin_revoked: 'Removed admin',
@@ -259,6 +261,8 @@ export function auditTargetHref(row: Pick<AuditLogRow, 'target_type' | 'target_i
   if (row.target_type === 'matrimony_profile') return `/admin/matrimony/${row.target_id}`
   if (row.target_type === 'matrimony_report') return '/admin/matrimony?status=reports'
   if (row.target_type === 'business_report') return '/admin/businesses?view=reports'
+  // (0031) Posts have no page of their own; reports are where admins meet them.
+  if (row.target_type === 'business_post') return '/admin/businesses?view=reports'
   return null
 }
 
@@ -336,6 +340,20 @@ export async function adminSetBusinessReview(
     p_business_id: businessId,
     p_status: status,
     p_note: note.trim() || null,
+  })
+  if (error) throw error
+}
+
+/** (0031) Hide (reason required, the poster sees it) or unhide a post. */
+export async function adminSetBusinessPostHidden(
+  postId: string,
+  hidden: boolean,
+  reason?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_business_post_hidden', {
+    p_post_id: postId,
+    p_hidden: hidden,
+    p_reason: reason?.trim() || null,
   })
   if (error) throw error
 }
