@@ -121,5 +121,9 @@ alter table business_post_saves enable row level security;
 alter table business_referrals enable row level security;
 -- (0033) Phase 10.8 enquiries, RPC-only.
 alter table business_enquiries enable row level security;
+-- (0034) Phase 11.1 paid-service access, RPC-only.
+alter table paid_service_settings enable row level security;
+alter table service_access_grants enable row level security;
+alter table service_access_requests enable row level security;
 
 -- everything else stays fully closed until you write real policies for it

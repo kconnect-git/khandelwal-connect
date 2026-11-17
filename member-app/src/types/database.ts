@@ -268,6 +268,8 @@ export type AdminOverviewStats = {
   business_reports_open: number
   /** (0030) */
   businesses_pending: number
+  /** (0034) */
+  access_requests_open: number
 }
 
 // ================================================================
@@ -859,6 +861,105 @@ type EventWriteArgs = {
   p_visibility?: string
 }
 
+// ================================================================
+// Phase 11.1 (0034): paid-service access
+// ================================================================
+
+/** The four paid add-ons. Profile is always free. */
+export type PaidService = 'directory' | 'business' | 'events' | 'matrimony'
+
+export type AccessRequestStatus = 'open' | 'granted' | 'dismissed'
+
+/** Admins pick one of these when granting or extending. */
+export type AccessMonths = 1 | 3 | 12
+
+/** One row of my_service_access(), one per service, fixed order. */
+export type MyServiceAccessRow = {
+  service: PaidService
+  /** The paywall switch. Off = free for everyone. */
+  enforced: boolean
+  /** What the gated RPCs decide: not enforced, an admin, or a live grant. */
+  has_access: boolean
+  is_admin: boolean
+  /** End of the live grant run; null if none. */
+  ends_at: string | null
+  /** End of the most recent grant that has run out (not revoked ones). */
+  expired_at: string | null
+  /** When the member's open request was made, if any. */
+  open_request_at: string | null
+}
+
+/** One row of admin_list_service_settings(). */
+export type AdminServiceSettingRow = {
+  service: PaidService
+  enforced: boolean
+  updated_at: string
+  updated_by_name: string | null
+  active_members: number
+  open_requests: number
+}
+
+/** One row of admin_list_access_requests(). email is the login email. */
+export type AdminAccessRequestRow = {
+  id: string
+  person_id: string
+  full_name: string
+  member_code: string | null
+  profile_photo_url: string | null
+  email: string | null
+  mobile_number: string | null
+  service: PaidService
+  message: string | null
+  status: AccessRequestStatus
+  requested_at: string
+  handled_at: string | null
+  handled_by_name: string | null
+  handled_note: string | null
+  /** The member's current access end for this service, if any. */
+  access_ends_at: string | null
+  total_count: number
+}
+
+/** One row of admin_list_service_access(): a member holding a service now. */
+export type AdminServiceAccessRow = {
+  person_id: string
+  full_name: string
+  member_code: string | null
+  profile_photo_url: string | null
+  email: string | null
+  mobile_number: string | null
+  service: PaidService
+  ends_at: string
+  last_granted_at: string
+  total_count: number
+}
+
+/** One row of admin_member_access(). has_grant ignores the switch and admin status. */
+export type AdminMemberAccessRow = {
+  service: PaidService
+  enforced: boolean
+  has_grant: boolean
+  ends_at: string | null
+  open_request_id: string | null
+  open_request_at: string | null
+  open_request_message: string | null
+}
+
+/** One row of admin_member_access_history(), newest first. */
+export type AdminAccessGrantRow = {
+  id: string
+  service: PaidService
+  months: AccessMonths
+  starts_at: string
+  ends_at: string
+  note: string | null
+  granted_by_name: string | null
+  created_at: string
+  revoked_at: string | null
+  revoked_by_name: string | null
+  revoke_note: string | null
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -1036,6 +1137,66 @@ export type Database = {
       business_dashboard: {
         Args: { p_business_id: string }
         Returns: BusinessDashboardStats
+      }
+      // (0034) Phase 11.1 paid-service access
+      my_service_access: {
+        Args: Record<PropertyKey, never>
+        Returns: MyServiceAccessRow[]
+      }
+      request_service_access: {
+        Args: { p_service: PaidService; p_message?: string | null }
+        Returns: string
+      }
+      admin_list_service_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: AdminServiceSettingRow[]
+      }
+      admin_list_access_requests: {
+        Args: {
+          p_status?: AccessRequestStatus
+          p_service?: PaidService | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: AdminAccessRequestRow[]
+      }
+      admin_list_service_access: {
+        Args: {
+          p_service?: PaidService | null
+          p_expiring_days?: number | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: AdminServiceAccessRow[]
+      }
+      admin_member_access: {
+        Args: { p_person_id: string }
+        Returns: AdminMemberAccessRow[]
+      }
+      admin_member_access_history: {
+        Args: { p_person_id: string }
+        Returns: AdminAccessGrantRow[]
+      }
+      admin_grant_service_access: {
+        Args: {
+          p_person_id: string
+          p_service: PaidService
+          p_months: AccessMonths
+          p_note?: string | null
+        }
+        Returns: string
+      }
+      admin_revoke_service_access: {
+        Args: { p_person_id: string; p_service: PaidService; p_note?: string | null }
+        Returns: void
+      }
+      admin_dismiss_access_request: {
+        Args: { p_request_id: string; p_note?: string | null }
+        Returns: void
+      }
+      admin_set_service_enforced: {
+        Args: { p_service: PaidService; p_enforced: boolean }
+        Returns: void
       }
       // (0032) Referrals
       give_business_referral: {

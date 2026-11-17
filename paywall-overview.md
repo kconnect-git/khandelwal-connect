@@ -43,8 +43,9 @@ being listed (business, matrimony) stay free so the network stays full.
 ## Still to decide
 
 - Prices per add-on (not needed in the app while payment is offline).
-- Should admins also get an email for each new access request, or just the in-app
-  queue? (Plan default: in-app queue only.)
+- ~~Admin email per new request~~ — decided: no, the in-app queue is enough.
+- ~~Free first month for existing members~~ — decided: no, switching a paywall on
+  locks everyone without a grant.
 
 Build plan: [phase-11-plan.md](phase-11-plan.md).
 

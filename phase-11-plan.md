@@ -1,6 +1,6 @@
 # Phase 11 Plan — Paid Services (Access Add-ons)
 
-> **Status: not started.**
+> **Status: in progress.** 11.1 ✅ built — see `phase-11.1-summary.md`.
 
 Phase 11 puts four services behind per-service monthly add-ons: **Directory, Business,
 Events and Matrimony**. Payment happens offline for now:
@@ -29,7 +29,7 @@ Migrations continue from `0034`.
 
 | Sub-phase | What | Depends on | Migration |
 |---|---|---|---|
-| **11.1** | Access foundation: tables, `has_service_access()`, request/grant RPCs, per-service switch | — | `0034` |
+| **11.1** ✅ | Access foundation: tables, `has_service_access()`, request/grant RPCs, per-service switch | — | `0034` |
 | **11.2** | Admin portal: requests queue, grant / extend / revoke, access panel on member detail, "access granted" email | 11.1 | — (edge fn) |
 | **11.3** | Member side: "My access" in Profile, `<LockedFeature>` + Request access, paid badge | 11.1 | — |
 | **11.4** | Directory gating | 11.1, 11.3 | `0035` |
@@ -42,7 +42,7 @@ The sub-phases from 11.4 to 11.7 don't depend on each other, so they can ship in
 
 ## 3. Sub-phases
 
-### 11.1 — Access foundation (`0034`)
+### 11.1 — Access foundation (`0034`) — ✅ built, see `phase-11.1-summary.md`
 
 - **Enum `paid_service`:** `directory`, `business`, `events`, `matrimony`.
 - **Table `service_access_grants`:** `id`, `person_id`, `service`, `starts_at`, `ends_at`, `granted_by`, `note`, `revoked_at`, `revoked_by`, `created_at`.
@@ -65,10 +65,12 @@ The sub-phases from 11.4 to 11.7 don't depend on each other, so they can ship in
   - `admin_grant_service_access(person, service, months 1|3|12, note, request_id?)`
     - If the member already has active access, the new period starts at the current `ends_at`. Otherwise it starts now.
     - It also marks the request `granted`.
-  - `admin_revoke_service_access(grant_id, note)`
+  - `admin_revoke_service_access(person, service, note)`: revokes every live or queued grant for that member and service (built this way instead of per grant id, because admins think in "remove X's Matrimony")
   - `admin_dismiss_access_request(request_id, note)`
   - `admin_member_access(person)`: the member's current access and grant history
   - `admin_set_service_enforced(service, bool)`: super_admin only
+  - `admin_list_service_settings()` and `admin_list_service_access(service, expiring_days, …)`: added while building, for 11.2's page
+  - `admin_member_access_history(person)`: every grant, newest first
 - **Overview stats:** `admin_overview_stats` gains an `access_requests_open` count.
 
 ### 11.2 — Admin portal
@@ -169,9 +171,9 @@ Follows `matrimony-paid-features.md`. This is the largest change.
 
 ## 5. Open decisions
 
-- **Admin email for new requests:** should admins get an email for each new access request? The default is the in-app queue and its badge only.
+- ~~**Admin email for new requests**~~ — **decided 2026-11-17: no.** The admin portal queue and its badge are enough.
 - **Prices:** these aren't needed in the app while payment is offline. Later we could show a price on the Request card.
-- **Launch:** before turning on each service's switch, decide whether existing members get a free first month. One `admin_grant_service_access` loop for all approved members would do it.
+- ~~**Launch / free first month**~~ — **decided 2026-11-17: no free month.** Turning a service's switch on locks everyone without a grant. Admins can grant access *before* the switch is turned on, so paid members don't lose access on launch day.
 
 ## 6. Out of scope
 

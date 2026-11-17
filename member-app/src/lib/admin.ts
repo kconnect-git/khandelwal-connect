@@ -243,6 +243,12 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   matrimony_hidden: 'Hid matrimony profile',
   matrimony_unhidden: 'Unhid matrimony profile',
   matrimony_report_resolved: 'Resolved matrimony report',
+  access_granted: 'Gave service access',
+  access_extended: 'Extended service access',
+  access_revoked: 'Removed service access',
+  access_request_dismissed: 'Dismissed access request',
+  access_service_enforced: 'Turned paywall on',
+  access_service_unenforced: 'Turned paywall off',
 }
 
 export function auditActionLabel(action: string): string {
