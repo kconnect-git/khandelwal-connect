@@ -1017,6 +1017,8 @@ create table service_access_grants (
   revoke_note text check (revoke_note is null or length(revoke_note) <= 500),
   -- (0035) when the member dismissed the Home "access granted" card
   member_seen_at timestamptz,
+  -- (0040) when the "ends in 5 days" reminder was emailed (last grant of a run)
+  reminded_at timestamptz,
   constraint service_access_grants_period_check check (ends_at > starts_at)
 );
 
@@ -7393,3 +7395,85 @@ $$;
 revoke all on function my_directory_opens_left() from public;
 grant execute on function my_directory_opens_left() to authenticated;
 revoke execute on function my_directory_opens_left() from anon;
+
+-- ================================================================
+-- Phase 11.8 (0040): access expiry reminders. service_role only (the
+-- send-access-expiring edge function). Not reproduced here, because they're
+-- project setup rather than schema -- see 0040: the pg_cron + pg_net
+-- extensions, the Vault secret 'access_reminder_cron_secret', and the daily
+-- cron job 'access-expiry-reminders' (09:00 IST).
+-- ================================================================
+
+create or replace function access_reminder_secret_ok(p_secret text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p_secret is not null and length(p_secret) > 0 and exists (
+    select 1 from vault.decrypted_secrets s
+    where s.name = 'access_reminder_cron_secret' and s.decrypted_secret = p_secret
+  );
+$$;
+
+revoke all on function access_reminder_secret_ok(text) from public;
+revoke all on function access_reminder_secret_ok(text) from anon, authenticated;
+grant execute on function access_reminder_secret_ok(text) to service_role;
+
+create or replace function access_reminders_due()
+returns table (
+  grant_id uuid,
+  person_id uuid,
+  full_name text,
+  email text,
+  service text,
+  ends_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select g.id, p.id, p.full_name, u.email::text, g.service, g.ends_at
+  from service_access_grants g
+  join people p on p.id = g.person_id
+  join paid_service_settings s on s.service = g.service
+  left join auth.users u on u.id = p.auth_user_id
+  where g.revoked_at is null
+    and g.reminded_at is null
+    and g.ends_at > now()
+    and g.ends_at <= now() + interval '5 days'
+    and s.enforced
+    and p.member_status = 'approved'
+    -- the last grant of the run: nothing later for this member + service
+    and not exists (select 1 from service_access_grants later
+                    where later.person_id = g.person_id
+                      and later.service = g.service
+                      and later.revoked_at is null
+                      and later.ends_at > g.ends_at)
+  order by g.ends_at, g.id;
+$$;
+
+revoke all on function access_reminders_due() from public;
+revoke all on function access_reminders_due() from anon, authenticated;
+grant execute on function access_reminders_due() to service_role;
+
+create or replace function mark_access_reminded(p_grant_ids uuid[])
+returns int
+language sql
+security definer
+set search_path = public
+as $$
+  with done as (
+    update service_access_grants
+    set reminded_at = now()
+    where id = any (p_grant_ids) and reminded_at is null
+    returning 1
+  )
+  select count(*)::int from done;
+$$;
+
+revoke all on function mark_access_reminded(uuid[]) from public;
+revoke all on function mark_access_reminded(uuid[]) from anon, authenticated;
+grant execute on function mark_access_reminded(uuid[]) to service_role;

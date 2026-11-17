@@ -1,6 +1,6 @@
 # Phase 11 Plan — Paid Services (Access Add-ons)
 
-> **Status: in progress.** 11.1–11.7 ✅ built (11.8 left) — see the `phase-11.N-summary.md` files.
+> **Status: in progress.** **Phase 11 complete.** 11.1–11.8 ✅ built and live (2026-11-17) — see the `phase-11.N-summary.md` files.
 
 Phase 11 puts four services behind per-service monthly add-ons: **Directory, Business,
 Events and Matrimony**. Payment happens offline for now:
@@ -36,7 +36,7 @@ Migrations continue from `0034`.
 | **11.5** ✅ | Business gating | 11.1, 11.3 | `0037` |
 | **11.6** ✅ | Events gating | 11.1, 11.3 | `0038` |
 | **11.7** ✅ | Matrimony gating | 11.1, 11.3 | `0039` |
-| **11.8** | Expiry reminder email (5 days before) | 11.2 | `0040` (schedule) |
+| **11.8** ✅ | Expiry reminder email (5 days before) | 11.2 | `0040` (schedule) |
 
 The sub-phases from 11.4 to 11.7 don't depend on each other, so they can ship in any order. Each service's switch stays **off** until that service is ready (see §3).
 
@@ -155,7 +155,7 @@ Follows `matrimony-paid-features.md`. This is the largest change.
   - Interests show who sent them to everyone.
   - Send interest is gated.
 
-### 11.8 — Expiry reminders (`0040`)
+### 11.8 — Expiry reminders (`0040`) — ✅ built, see `phase-11.8-summary.md`
 
 - **Edge function `send-access-expiring`:** emails each member whose grant ends in 5 days.
 - **No repeat emails:** a `reminded_at` column on the grant stops a member getting the same reminder twice.
