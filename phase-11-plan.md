@@ -1,6 +1,6 @@
 # Phase 11 Plan — Paid Services (Access Add-ons)
 
-> **Status: in progress.** 11.1 ✅, 11.2 ✅ and 11.3 ✅ built — see `phase-11.1-summary.md`, `phase-11.2-summary.md` and `phase-11.3-summary.md`.
+> **Status: in progress.** 11.1–11.5 ✅ built — see the `phase-11.N-summary.md` files.
 
 Phase 11 puts four services behind per-service monthly add-ons: **Directory, Business,
 Events and Matrimony**. Payment happens offline for now:
@@ -32,8 +32,8 @@ Migrations continue from `0034`.
 | **11.1** ✅ | Access foundation: tables, `has_service_access()`, request/grant RPCs, per-service switch | — | `0034` |
 | **11.2** ✅ | Admin portal: requests queue, grant / extend / revoke, access panel on member detail, "access granted" email | 11.1 | — (edge fn) |
 | **11.3** ✅ | Member side: "My access" in Profile, `<LockedFeature>` + Request access, paid badge, Home "access granted" card | 11.1 | `0035` |
-| **11.4** | Directory gating | 11.1, 11.3 | `0036` |
-| **11.5** | Business gating | 11.1, 11.3 | `0037` |
+| **11.4** ✅ | Directory gating | 11.1, 11.3 | `0036` |
+| **11.5** ✅ | Business gating | 11.1, 11.3 | `0037` |
 | **11.6** | Events gating | 11.1, 11.3 | `0038` |
 | **11.7** | Matrimony gating | 11.1, 11.3 | `0039` |
 | **11.8** | Expiry reminder email (5 days before) | 11.2 | `0040` (schedule) |
@@ -97,7 +97,7 @@ The sub-phases from 11.4 to 11.7 don't depend on each other, so they can ship in
 
 > **Each of 11.4–11.7:** set that service's entry in `PAYWALL_READY` (`lib/serviceAccess.ts`) to `true`, so the admin page offers Turn on.
 
-### 11.4 — Directory gating (`0036`)
+### 11.4 — Directory gating (`0036`) — ✅ built, see `phase-11.4-summary.md`
 
 Follows `directory-paid-features.md`.
 - **`list_directory`:**
@@ -114,7 +114,7 @@ Follows `directory-paid-features.md`.
   - a limit-reached screen
   - filter chips allow only one active filter at a time
 
-### 11.5 — Business gating (`0037`)
+### 11.5 — Business gating (`0037`) — ✅ built, see `phase-11.5-summary.md`
 
 Follows `business-paid-features.md`.
 - **`get_business`:** without access, it returns null phone, email, website and social links. The owner always sees their own listing in full.

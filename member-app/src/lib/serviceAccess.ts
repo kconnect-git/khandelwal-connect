@@ -32,8 +32,8 @@ export const PAID_SERVICE_LABELS: Record<PaidService, string> = {
  *  page won't offer "Turn on" until then: a switch with nothing behind it
  *  would lock nothing. Flip each one in the sub-phase that gates it. */
 export const PAYWALL_READY: Record<PaidService, boolean> = {
-  directory: false,
-  business: false,
+  directory: true,
+  business: true,
   events: false,
   matrimony: false,
 }

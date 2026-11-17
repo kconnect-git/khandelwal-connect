@@ -1042,6 +1042,17 @@ create unique index service_access_requests_one_open_idx
 create index service_access_requests_status_idx
   on service_access_requests (status, requested_at);
 
+-- (0036) Phase 11.4: profiles a member WITHOUT Directory access opened, per
+-- India day, for the 10-a-day allowance. RPC-only.
+create table directory_profile_views (
+  viewer_id uuid not null references people(id) on delete cascade,
+  viewed_id uuid not null references people(id) on delete cascade,
+  -- India date: the daily allowance resets at midnight IST.
+  view_date date not null,
+  created_at timestamptz not null default now(),
+  primary key (viewer_id, view_date, viewed_id)
+);
+
 -- ================================================================
 -- membership / admin gate helpers
 -- ================================================================
@@ -1123,6 +1134,58 @@ $$;
 revoke all on function has_paid_badge(uuid) from public;
 revoke all on function has_paid_badge(uuid) from anon, authenticated;
 
+-- (0034) Paid-service entitlement helpers. Up here (moved in 0036) because
+-- search_registered_members below is a SQL function that calls them.
+-- When the member's current (or already-queued) access for a service runs
+-- out; null when they have none. Grants chain end-to-start, so the latest
+-- end of the live grants is the end of the whole run.
+create or replace function service_access_ends_at(p_person_id uuid, p_service text)
+returns timestamptz
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select max(g.ends_at)
+  from service_access_grants g
+  where g.person_id = p_person_id
+    and g.service = p_service
+    and g.revoked_at is null
+    and g.ends_at > now();
+$$;
+
+revoke all on function service_access_ends_at(uuid, text) from public;
+-- Supabase grants execute to anon/authenticated directly on new functions,
+-- so revoking from public alone leaves them callable.
+revoke all on function service_access_ends_at(uuid, text) from anon, authenticated;
+
+-- The one entitlement check. An unknown service name is treated as
+-- enforced (locked), so a typo in a caller fails closed.
+create or replace function has_service_access(p_person_id uuid, p_service text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    not coalesce((select s.enforced from paid_service_settings s where s.service = p_service), true)
+    or exists (select 1 from people p
+               join admins a on a.auth_user_id = p.auth_user_id
+               where p.id = p_person_id)
+    or exists (select 1 from service_access_grants g
+               where g.person_id = p_person_id
+                 and g.service = p_service
+                 and g.revoked_at is null
+                 and g.starts_at <= now()
+                 and g.ends_at > now());
+$$;
+
+revoke all on function has_service_access(uuid, text) from public;
+-- Supabase grants execute to anon/authenticated directly on new functions,
+-- so revoking from public alone leaves them callable.
+revoke all on function has_service_access(uuid, text) from anon, authenticated;
+
 -- Phase 2: family details RPCs (see migrations 0006/0007 for how these were
 -- introduced).
 
@@ -1155,7 +1218,12 @@ security definer
 set search_path = public
 as $$
   select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_state, p.member_code,
-         case when p.hide_mobile then null else p.mobile_number end
+         case when p.hide_mobile then null
+              when is_admin()
+                or has_service_access((select me.id from people me where me.auth_user_id = auth.uid()),
+                                      'directory')
+                then p.mobile_number
+         end
   from people p
   where is_approved_member()
     and p.member_status = 'approved'
@@ -1168,6 +1236,7 @@ $$;
 
 revoke all on function search_registered_members(text, text, text) from public;
 grant execute on function search_registered_members(text, text, text) to authenticated;
+revoke execute on function search_registered_members(text, text, text) from anon;
 
 -- Saves one of the single-valued relations (father/mother/spouse/
 -- maternal_uncle/spouse_father/spouse_mother) on the caller's own row. Name
@@ -1455,19 +1524,42 @@ returns table (
   has_paid_badge boolean,
   total_count bigint
 )
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
+declare
+  v_me uuid;
+  v_full boolean;
+  v_filters int;
+begin
+  if not is_approved_member() then
+    return;
+  end if;
+  select p.id into v_me from people p where p.auth_user_id = auth.uid();
+  v_full := coalesce(is_admin() or has_service_access(v_me, 'directory'), false);
+
+  v_filters := (nullif(trim(p_state), '') is not null)::int
+             + (nullif(trim(p_city), '') is not null)::int
+             + (nullif(trim(p_gotra), '') is not null)::int
+             + (nullif(trim(p_occupation), '') is not null)::int;
+  if not v_full and v_filters > 1 then
+    raise exception using
+      errcode = 'KCL02',
+      message = 'Combining filters is part of Directory access. Use one filter at a time.';
+  end if;
+
+  return query
   select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_state,
          p.member_code, p.profile_photo_url,
-         p.occupation_type, p.job_title, p.company_name,
+         p.occupation_type,
+         case when v_full then p.job_title end,
+         case when v_full then p.company_name end,
          has_paid_badge(p.id),
-         count(*) over () as total_count
+         count(*) over ()
   from people p
-  where is_approved_member()
-    and p.member_status = 'approved'
+  where p.member_status = 'approved'
     and (p_search is null or length(trim(p_search)) = 0
          or p.full_name ilike '%' || p_search || '%')
     and (p_state is null or p.current_state ilike p_state)
@@ -1477,6 +1569,7 @@ as $$
   order by p.full_name asc, p.id asc
   limit least(greatest(coalesce(p_limit, 20), 1), 50)
   offset greatest(coalesce(p_offset, 0), 0);
+end;
 $$;
 
 revoke all on function list_directory(text, text, text, text, text, int, int) from public;
@@ -1503,21 +1596,71 @@ returns table (
   job_location text,
   has_paid_badge boolean
 )
-language sql
-stable
+language plpgsql
+volatile
 security definer
 set search_path = public
 as $$
-  select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_district,
-         p.current_state, p.member_code, p.education, p.marital_status,
-         case when p.hide_mobile and not is_admin() then null else p.mobile_number end,
+declare
+  c_daily_limit constant int := 10;
+  v_me uuid;
+  v_full boolean;
+  v_today date := (now() at time zone 'Asia/Kolkata')::date;
+  v_opened int;
+begin
+  -- Same visibility rule as before: approved members see approved members;
+  -- admins see anyone. Nothing found = no row (and nothing counted).
+  if not exists (
+    select 1 from people p
+    where p.id = p_person_id
+      and (is_approved_member() or is_admin())
+      and (p.member_status = 'approved' or is_admin())
+  ) then
+    return;
+  end if;
+
+  select p.id into v_me from people p where p.auth_user_id = auth.uid();
+  v_full := coalesce(is_admin() or v_me = p_person_id or has_service_access(v_me, 'directory'), false);
+  if v_me is null and not v_full then
+    return;
+  end if;
+
+  if not v_full then
+    -- One member's concurrent opens are serialised, so two tabs can't both
+    -- squeeze in as the 10th.
+    perform pg_advisory_xact_lock(hashtextextended('directory_views:' || v_me::text, 0));
+    if not exists (select 1 from directory_profile_views v
+                   where v.viewer_id = v_me and v.view_date = v_today and v.viewed_id = p_person_id) then
+      select count(*) into v_opened from directory_profile_views v
+      where v.viewer_id = v_me and v.view_date = v_today;
+      if v_opened >= c_daily_limit then
+        raise exception using
+          errcode = 'KCL01',
+          message = format('You have opened %s profiles today. More open at midnight, or with Directory access.', c_daily_limit);
+      end if;
+      insert into directory_profile_views (viewer_id, viewed_id, view_date)
+      values (v_me, p_person_id, v_today)
+      on conflict do nothing;
+    end if;
+  end if;
+
+  return query
+  select p.id, p.full_name, p.gotra, p.native_place, p.current_city,
+         case when v_full then p.current_district end,
+         p.current_state, p.member_code, p.education,
+         case when v_full then p.marital_status end,
+         case when not v_full then null
+              when p.hide_mobile and not is_admin() and p.id is distinct from v_me then null
+              else p.mobile_number end,
          p.profile_photo_url,
-         p.occupation_type, p.job_title, p.company_name, p.job_location,
+         p.occupation_type,
+         case when v_full then p.job_title end,
+         case when v_full then p.company_name end,
+         case when v_full then p.job_location end,
          has_paid_badge(p.id)
   from people p
-  where p.id = p_person_id
-    and (is_approved_member() or is_admin())
-    and (p.member_status = 'approved' or is_admin());
+  where p.id = p_person_id;
+end;
 $$;
 
 revoke all on function get_member_profile(uuid) from public;
@@ -1595,13 +1738,14 @@ security definer
 set search_path = public
 as $$
   select b.id, b.name, b.category, b.description, b.city, b.state,
-         case when b.show_phone then b.contact_phone end as contact_phone,
-         b.website, b.logo_url, b.is_verified,
+         case when b.show_phone and (b.owner_id = me.id or is_admin() or has_service_access(me.id, 'business')) then b.contact_phone end as contact_phone,
+         case when (b.owner_id = me.id or is_admin() or has_service_access(me.id, 'business')) then b.website end, b.logo_url, b.is_verified,
          p.id as owner_id, p.full_name as owner_name, p.profile_photo_url as owner_photo_url,
          p.member_code as owner_member_code,
          count(*) over () as total_count
   from businesses b
   join people p on p.id = b.owner_id
+  cross join lateral (select (select x.id from people x where x.auth_user_id = auth.uid()) as id) me
   where is_approved_member()
     and p.member_status = 'approved'
     and not b.is_hidden
@@ -1629,6 +1773,7 @@ $$;
 
 revoke all on function list_businesses(text, text, text, text, int, int, boolean) from public;
 grant execute on function list_businesses(text, text, text, text, int, int, boolean) to authenticated;
+revoke execute on function list_businesses(text, text, text, text, int, int, boolean) from anon;
 
 -- One listing: the card columns plus the (0017) detail columns. Zero rows
 -- if unknown or the owner hasn't completed onboarding.
@@ -1667,10 +1812,15 @@ security definer
 set search_path = public
 as $$
   select b.id, b.name, b.category, b.description, b.city, b.state,
-         case when b.show_phone then b.contact_phone end, b.website, b.logo_url,
-         b.brand_name, b.address_line1, b.address_line2, b.business_email,
+         case when b.show_phone and (b.owner_id = me.id or is_admin() or has_service_access(me.id, 'business')) then b.contact_phone end,
+         case when (b.owner_id = me.id or is_admin() or has_service_access(me.id, 'business')) then b.website end, b.logo_url,
+         b.brand_name, b.address_line1, b.address_line2,
+         case when (b.owner_id = me.id or is_admin() or has_service_access(me.id, 'business')) then b.business_email end,
          b.business_type,
-         b.facebook_url, b.instagram_url, b.linkedin_url, b.youtube_url,
+         case when (b.owner_id = me.id or is_admin() or has_service_access(me.id, 'business')) then b.facebook_url end,
+         case when (b.owner_id = me.id or is_admin() or has_service_access(me.id, 'business')) then b.instagram_url end,
+         case when (b.owner_id = me.id or is_admin() or has_service_access(me.id, 'business')) then b.linkedin_url end,
+         case when (b.owner_id = me.id or is_admin() or has_service_access(me.id, 'business')) then b.youtube_url end,
          b.products, b.is_verified,
          exists (select 1 from business_saves s
                  join people me on me.id = s.person_id
@@ -1679,6 +1829,7 @@ as $$
          b.owner_role
   from businesses b
   join people p on p.id = b.owner_id
+  cross join lateral (select (select x.id from people x where x.auth_user_id = auth.uid()) as id) me
   where b.id = p_business_id
     and is_approved_member()
     and p.member_status = 'approved'
@@ -1688,6 +1839,7 @@ $$;
 
 revoke all on function get_business(uuid) from public;
 grant execute on function get_business(uuid) to authenticated;
+revoke execute on function get_business(uuid) from anon;
 
 -- A member's listings, for the BUSINESSES section on their profile screen.
 create or replace function list_member_businesses(p_person_id uuid)
@@ -3561,6 +3713,11 @@ begin
   if v_me is null then
     raise exception 'Only approved members can post';
   end if;
+  -- (0037)
+  if not has_service_access(v_me, 'business') then
+    raise exception using errcode = 'KCL03',
+      message = 'Posting in Buy & Sell is part of Business access.';
+  end if;
   if p_kind is null or p_kind not in ('requirement', 'offer') then
     raise exception 'Say whether you''re looking for something or offering it';
   end if;
@@ -3601,6 +3758,7 @@ $$;
 
 revoke all on function create_business_post(text, text, text, text, text, text, text, text, uuid) from public;
 grant execute on function create_business_post(text, text, text, text, text, text, text, text, uuid) to authenticated;
+revoke execute on function create_business_post(text, text, text, text, text, text, text, text, uuid) from anon;
 
 -- Close a post, or reopen it for another 30 days (renew). Poster only; not
 -- while an admin has it hidden.
@@ -3678,6 +3836,14 @@ begin
   if v_post.poster_person_id = v_me then
     raise exception 'This is your own post';
   end if;
+  -- (0037) Business access, unless they already responded (a lapsed member
+  -- keeps what they had).
+  if not has_service_access(v_me, 'business')
+     and not exists (select 1 from business_post_responses r
+                     where r.post_id = p_post_id and r.responder_person_id = v_me) then
+    raise exception using errcode = 'KCL03',
+      message = 'Responding to posts is part of Business access.';
+  end if;
 
   insert into business_post_responses (post_id, responder_person_id)
   values (p_post_id, v_me)
@@ -3688,6 +3854,7 @@ $$;
 
 revoke all on function respond_to_business_post(uuid) from public;
 grant execute on function respond_to_business_post(uuid) to authenticated;
+revoke execute on function respond_to_business_post(uuid) from anon;
 
 -- Who responded to one of the caller's posts.
 create or replace function list_business_post_responses(p_post_id uuid)
@@ -4142,6 +4309,11 @@ begin
   if v_me is null then
     raise exception 'Only approved members can send enquiries';
   end if;
+  -- (0037)
+  if not has_service_access(v_me, 'business') then
+    raise exception using errcode = 'KCL03',
+      message = 'Sending enquiries is part of Business access.';
+  end if;
   select g.owner_id, g.products into v_owner, v_products from get_business(p_business_id) g;
   if v_owner is null then
     raise exception 'Business not found';
@@ -4172,6 +4344,7 @@ $$;
 
 revoke all on function send_business_enquiry(uuid, text, text) from public;
 grant execute on function send_business_enquiry(uuid, text, text) to authenticated;
+revoke execute on function send_business_enquiry(uuid, text, text) from anon;
 
 -- An owner's enquiries for one listing, newest first. from_phone is null
 -- when the member hides their number.
@@ -4210,6 +4383,9 @@ as $$
   join people p on p.id = e.from_person_id
   where e.business_id = p_business_id
     and me.auth_user_id = auth.uid()
+    -- (0037) Reading enquiries is part of Business access; the dashboard's
+    -- counts stay free.
+    and has_service_access(me.id, 'business')
     and (p_status is null or e.status = p_status)
   order by e.created_at desc, e.id asc
   limit least(greatest(coalesce(p_limit, 10), 1), 50)
@@ -4218,6 +4394,7 @@ $$;
 
 revoke all on function list_business_enquiries(uuid, text, int, int) from public;
 grant execute on function list_business_enquiries(uuid, text, int, int) to authenticated;
+revoke execute on function list_business_enquiries(uuid, text, int, int) from anon;
 
 -- Mark an enquiry to one of the caller's listings handled, or back to new.
 create or replace function set_business_enquiry_done(p_enquiry_id uuid, p_done boolean)
@@ -6424,55 +6601,9 @@ grant execute on function admin_set_matrimony_hidden(uuid, boolean, text) to aut
 -- Phase 11.1 (0034): paid-service access (tables sit with notices)
 -- ================================================================
 
--- When the member's current (or already-queued) access for a service runs
--- out; null when they have none. Grants chain end-to-start, so the latest
--- end of the live grants is the end of the whole run.
-create or replace function service_access_ends_at(p_person_id uuid, p_service text)
-returns timestamptz
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select max(g.ends_at)
-  from service_access_grants g
-  where g.person_id = p_person_id
-    and g.service = p_service
-    and g.revoked_at is null
-    and g.ends_at > now();
-$$;
+-- (service_access_ends_at / has_service_access moved up beside has_paid_badge
+-- in 0036: search_registered_members, a SQL function, now calls them.)
 
-revoke all on function service_access_ends_at(uuid, text) from public;
--- Supabase grants execute to anon/authenticated directly on new functions,
--- so revoking from public alone leaves them callable.
-revoke all on function service_access_ends_at(uuid, text) from anon, authenticated;
-
--- The one entitlement check. An unknown service name is treated as
--- enforced (locked), so a typo in a caller fails closed.
-create or replace function has_service_access(p_person_id uuid, p_service text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select
-    not coalesce((select s.enforced from paid_service_settings s where s.service = p_service), true)
-    or exists (select 1 from people p
-               join admins a on a.auth_user_id = p.auth_user_id
-               where p.id = p_person_id)
-    or exists (select 1 from service_access_grants g
-               where g.person_id = p_person_id
-                 and g.service = p_service
-                 and g.revoked_at is null
-                 and g.starts_at <= now()
-                 and g.ends_at > now());
-$$;
-
-revoke all on function has_service_access(uuid, text) from public;
--- Supabase grants execute to anon/authenticated directly on new functions,
--- so revoking from public alone leaves them callable.
-revoke all on function has_service_access(uuid, text) from anon, authenticated;
 
 -- ================================================================
 -- member RPCs
@@ -7054,3 +7185,32 @@ $$;
 revoke all on function dismiss_access_news(text) from public;
 grant execute on function dismiss_access_news(text) to authenticated;
 revoke execute on function dismiss_access_news(text) from anon;
+
+-- ================================================================
+-- Phase 11.4 (0036): Directory gating (list_directory, get_member_profile and
+-- search_registered_members are updated in place above)
+-- ================================================================
+
+-- How many profiles the caller can still open today. Null = unlimited (has
+-- Directory access, is an admin, or the paywall is off).
+create or replace function my_directory_opens_left()
+returns int
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+           when me.id is null then 0
+           when is_admin() or has_service_access(me.id, 'directory') then null
+           else greatest(0, 10 - (select count(*)::int from directory_profile_views v
+                                  where v.viewer_id = me.id
+                                    and v.view_date = (now() at time zone 'Asia/Kolkata')::date))
+         end
+  from (select (select p.id from people p
+                where p.auth_user_id = auth.uid() and p.member_status = 'approved') as id) me;
+$$;
+
+revoke all on function my_directory_opens_left() from public;
+grant execute on function my_directory_opens_left() to authenticated;
+revoke execute on function my_directory_opens_left() from anon;

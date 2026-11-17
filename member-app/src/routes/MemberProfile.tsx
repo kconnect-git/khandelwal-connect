@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../utils/supabase'
 import { getOwnPerson } from '../lib/people'
-import { getMemberProfile, type MemberProfile as MemberProfileData } from '../lib/directory'
+import {
+  DIRECTORY_DAILY_LIMIT,
+  DirectoryLimitError,
+  getMemberProfile,
+  getMyDirectoryOpensLeft,
+  type MemberProfile as MemberProfileData,
+} from '../lib/directory'
+import { LockedFeature } from '../components/LockedFeature'
+import { useServiceAccess } from '../context/ServiceAccessContext'
 import { businessMetaLine, listMemberBusinesses, type MemberBusiness } from '../lib/businesses'
 import { Avatar } from '../components/Avatar'
 import { PaidBadge } from '../components/PaidBadge'
@@ -43,6 +51,12 @@ export function MemberProfile() {
   const [ownId, setOwnId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // (11.4) Directory paywall: the 11th different profile today is refused,
+  // and how many are left is shown to members without Directory access.
+  const [limitReached, setLimitReached] = useState(false)
+  const [opensLeft, setOpensLeft] = useState<number | null>(null)
+  const { hasAccess } = useServiceAccess()
+  const directoryAccess = hasAccess('directory')
 
   useEffect(() => {
     let cancelled = false
@@ -51,6 +65,7 @@ export function MemberProfile() {
       if (!id) return
       setLoading(true)
       setError(null)
+      setLimitReached(false)
       try {
         const { data: sessionData } = await supabase.auth.getSession()
         const session = sessionData.session
@@ -67,8 +82,18 @@ export function MemberProfile() {
         setProfile(loadedProfile)
         setBusinesses(loadedBusinesses)
         setOwnId(own?.id ?? null)
+        // Best-effort, and null (unlimited) for anyone with access.
+        getMyDirectoryOpensLeft()
+          .then((left) => {
+            if (!cancelled) setOpensLeft(left)
+          })
+          .catch((err) => console.error('[MemberProfile] failed to load opens left', err))
       } catch (err) {
         if (cancelled) return
+        if (err instanceof DirectoryLimitError && err.kind === 'daily_limit') {
+          setLimitReached(true)
+          return
+        }
         console.error('[MemberProfile] failed to load member', err)
         setError(err instanceof Error ? err.message : 'Something went wrong loading this member.')
       } finally {
@@ -86,6 +111,28 @@ export function MemberProfile() {
     return (
       <div className="flex-1 flex flex-col px-5 py-10 max-w-2xl mx-auto w-full">
         <p className="text-sm text-[var(--color-text-muted)]">Loading member…</p>
+      </div>
+    )
+  }
+
+  if (limitReached) {
+    return (
+      <div className="flex-1 flex flex-col items-start gap-4 px-5 py-10 max-w-2xl mx-auto w-full">
+        <h1 className="font-heading text-2xl font-semibold">That’s {DIRECTORY_DAILY_LIMIT} profiles today</h1>
+        <p className="text-[var(--color-text-muted)]">
+          You can open {DIRECTORY_DAILY_LIMIT} different profiles a day. Profiles you’ve already
+          opened today still open, and more open at midnight.
+        </p>
+        <LockedFeature
+          service="directory"
+          title="Open as many profiles as you like"
+        />
+        <Link
+          to="/directory"
+          className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
+        >
+          Back to directory
+        </Link>
       </div>
     )
   }
@@ -108,6 +155,8 @@ export function MemberProfile() {
   }
 
   const isSelf = ownId !== null && ownId === profile.id
+  const firstName = profile.full_name.split(' ')[0]
+  const locked = !isSelf && !directoryAccess
   const phoneDigits = (profile.mobile_number ?? '').replace(/\D/g, '')
   const subtitle = [
     profile.gotra ? `Gotra ${profile.gotra}` : null,
@@ -146,6 +195,12 @@ export function MemberProfile() {
         >
           Edit profile
         </Link>
+      ) : locked ? (
+        <LockedFeature
+          service="directory"
+          title={`Upgrade to call or WhatsApp ${firstName}`}
+          compact
+        />
       ) : (
         profile.mobile_number && (
           <div className="flex gap-2">
@@ -229,8 +284,31 @@ export function MemberProfile() {
       {!isSelf && (
         <Section
           title="Contact"
-          rows={[{ label: 'Mobile', value: profile.mobile_number ?? 'Hidden by this member' }]}
+          rows={[
+            {
+              label: 'Mobile',
+              value:
+                profile.mobile_number ??
+                (locked ? 'Part of Directory access' : 'Hidden by this member'),
+            },
+          ]}
         />
+      )}
+
+      {/* (11.4) Job, company, district and marital status come back empty
+          without Directory access, so their rows simply don't show. Say why. */}
+      {locked && (
+        <LockedFeature
+          service="directory"
+          title="See full profiles"
+          description="Job title, company, work location, district and marital status are part of Directory access, along with calling and WhatsApp."
+        />
+      )}
+
+      {locked && opensLeft !== null && (
+        <p className="text-xs text-[var(--color-text-muted)]">
+          {opensLeft} of {DIRECTORY_DAILY_LIMIT} profile views left today.
+        </p>
       )}
     </div>
   )

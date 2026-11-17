@@ -1660,6 +1660,11 @@ export type Database = {
           has_paid_badge: boolean
         }[]
       }
+      // (0036) Phase 11.4
+      my_directory_opens_left: {
+        Args: Record<PropertyKey, never>
+        Returns: number | null
+      }
       directory_filter_options: {
         Args: Record<PropertyKey, never>
         Returns: {

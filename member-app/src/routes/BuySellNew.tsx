@@ -20,6 +20,8 @@ import { TextField } from '../components/form/TextField'
 import { SelectField } from '../components/form/SelectField'
 import { FromProfileLabel } from '../components/form/FromProfileLabel'
 import type { BusinessPostKind, BusinessRow } from '../types/database'
+import { LockedFeature } from '../components/LockedFeature'
+import { useServiceAccess } from '../context/ServiceAccessContext'
 
 // Phase 10.6: post a requirement or an offer. Starts from the member's own
 // profile (city, state, phone). Posting as one of their approved listings
@@ -35,6 +37,8 @@ const TITLE_PLACEHOLDERS: Record<BusinessPostKind, string> = {
 }
 
 export function BuySellNew() {
+  // (11.5) Posting is part of Business access (the server refuses too).
+  const { hasAccess } = useServiceAccess()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const initialKind: BusinessPostKind = searchParams.get('kind') === 'offer' ? 'offer' : 'requirement'
@@ -129,6 +133,20 @@ export function BuySellNew() {
       ‹ Buy & Sell
     </Link>
   )
+
+  if (!hasAccess('business')) {
+    return (
+      <div className="flex-1 flex flex-col gap-4 px-5 py-8 max-w-2xl mx-auto w-full">
+        {backLink}
+        <h1 className="font-heading text-2xl font-semibold">Post a requirement or offer</h1>
+        <LockedFeature
+          service="business"
+          title="Posting in Buy & Sell is part of Business access"
+          description="Reading posts stays free. With Business access you can post requirements and offers, respond to others, contact businesses and read your dashboard enquiries."
+        />
+      </div>
+    )
+  }
 
   if (!form) {
     return (

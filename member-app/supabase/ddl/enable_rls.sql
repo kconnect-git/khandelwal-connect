@@ -125,5 +125,7 @@ alter table business_enquiries enable row level security;
 alter table paid_service_settings enable row level security;
 alter table service_access_grants enable row level security;
 alter table service_access_requests enable row level security;
+-- (0036) Phase 11.4 directory profile opens, RPC-only.
+alter table directory_profile_views enable row level security;
 
 -- everything else stays fully closed until you write real policies for it

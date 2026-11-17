@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useNotices } from '../context/NoticesContext'
+import { useServiceAccess } from '../context/ServiceAccessContext'
 import { listMyNotices, markNoticesRead } from '../lib/notices'
 import { formatAdminDate } from '../lib/admin'
-import type { MemberNoticeRow } from '../types/database'
+import { PAID_SERVICE_LABELS, PAID_SERVICE_PATHS } from '../lib/serviceAccess'
+import type { MemberNoticeRow, MyAccessNewsRow } from '../types/database'
 
 // Phase 5c: every notice addressed to this member, newest first. Opening the
 // page marks them all read -- the "New" tags come from the state as it was
 // loaded, so they stay visible for this visit while the bell clears.
+//
+// (11.3) "Your access" above the notices: unseen access grants, the same
+// news as the Home card. Opening this page marks them seen too (which also
+// clears the Home card); they stay listed, marked New, for this visit.
 
 const PAGE_SIZE = 20
 
@@ -16,6 +23,16 @@ export function Notices() {
   const [total, setTotal] = useState(0)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { news, loaded: accessLoaded, dismissNews } = useServiceAccess()
+  // Snapshot of the access news as first loaded, so it stays on screen after
+  // it's marked seen.
+  const [accessItems, setAccessItems] = useState<MyAccessNewsRow[] | null>(null)
+
+  useEffect(() => {
+    if (!accessLoaded || accessItems !== null) return
+    setAccessItems(news)
+    for (const item of news) dismissNews(item.service)
+  }, [accessLoaded, accessItems, news, dismissNews])
 
   useEffect(() => {
     let cancelled = false
@@ -58,12 +75,49 @@ export function Notices() {
 
       {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}
 
+      {accessItems && accessItems.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-xs font-medium tracking-wide text-[var(--color-text-muted)] uppercase">
+            Your access
+          </h2>
+          <ul className="flex flex-col gap-3">
+            {accessItems.map((item) => {
+              const label = PAID_SERVICE_LABELS[item.service]
+              return (
+                <li
+                  key={item.service}
+                  className="flex flex-col gap-2 rounded-xl border border-[var(--color-accent)] bg-[var(--color-surface)] p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="font-heading text-lg font-semibold break-words">
+                      {item.extended ? `${label} access extended` : `You now have ${label} access`}
+                    </h3>
+                    <span className="shrink-0 rounded-full bg-[var(--color-accent)] px-2 py-0.5 text-xs font-semibold text-white">
+                      New
+                    </span>
+                  </div>
+                  <p className="text-sm">Until {formatAdminDate(item.ends_at)}.</p>
+                  <Link
+                    to={PAID_SERVICE_PATHS[item.service]}
+                    className="self-start text-sm font-medium text-[var(--color-accent)] hover:underline"
+                  >
+                    Open {label} ›
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+
       {rows === null ? (
         !error && <p className="text-sm text-[var(--color-text-muted)]">Loading notices…</p>
       ) : rows.length === 0 ? (
+        accessItems && accessItems.length > 0 ? null : (
         <p className="text-sm text-[var(--color-text-muted)]">
           No notices yet. Announcements from the samaj will appear here.
         </p>
+        )
       ) : (
         <ul className="flex flex-col gap-3">
           {rows.map((notice) => (

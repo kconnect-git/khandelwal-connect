@@ -3,8 +3,13 @@ import { Link } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
 import { PaidBadge } from '../components/PaidBadge'
 import { ChipSelect } from '../components/ChipSelect'
+import { LockedFeature } from '../components/LockedFeature'
+import { useServiceAccess } from '../context/ServiceAccessContext'
 import {
+  DIRECTORY_DAILY_LIMIT,
+  DirectoryLimitError,
   getDirectoryFilterOptions,
+  getMyDirectoryOpensLeft,
   listDirectory,
   workLine,
   type DirectoryEntry,
@@ -41,6 +46,31 @@ export function Directory() {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // (11.4) Directory paywall: without access, one filter at a time (the
+  // server refuses more), and 10 profile opens a day.
+  const { hasAccess } = useServiceAccess()
+  const directoryAccess = hasAccess('directory')
+  const [oneFilterNote, setOneFilterNote] = useState(false)
+  const [opensLeft, setOpensLeft] = useState<number | null>(null)
+
+  useEffect(() => {
+    getMyDirectoryOpensLeft()
+      .then(setOpensLeft)
+      .catch((err) => console.error('[Directory] failed to load opens left', err))
+  }, [])
+
+  /** Without access, picking a filter replaces any other one. */
+  function setFilter(key: keyof Filters, value: string) {
+    if (directoryAccess || value === '') {
+      setFilters({ ...filters, [key]: value })
+      return
+    }
+    const others = (Object.keys(filters) as (keyof Filters)[]).filter(
+      (other) => other !== key && filters[other] !== '',
+    )
+    setOneFilterNote(others.length > 0)
+    setFilters({ ...EMPTY_FILTERS, [key]: value })
+  }
 
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -74,6 +104,14 @@ export function Directory() {
       })
       .catch((err) => {
         if (cancelled) return
+        if (err instanceof DirectoryLimitError && err.kind === 'combined_filters') {
+          // Access state was stale (e.g. it just lapsed): keep the last-picked
+          // filter's results out and explain, rather than a raw error.
+          setOneFilterNote(true)
+          setEntries([])
+          setTotal(0)
+          return
+        }
         console.error('[Directory] failed to load members', err)
         setError(err instanceof Error ? err.message : 'Something went wrong loading the directory.')
       })
@@ -142,37 +180,55 @@ export function Directory() {
         <ChipSelect
           label="State"
           value={filters.state}
-          onChange={(state) => setFilters((f) => ({ ...f, state }))}
+          onChange={(state) => setFilter('state', state)}
           options={options?.states ?? []}
         />
         <ChipSelect
           label="City"
           value={filters.city}
-          onChange={(city) => setFilters((f) => ({ ...f, city }))}
+          onChange={(city) => setFilter('city', city)}
           options={options?.cities ?? []}
         />
         <ChipSelect
           label="Gotra"
           value={filters.gotra}
-          onChange={(gotra) => setFilters((f) => ({ ...f, gotra }))}
+          onChange={(gotra) => setFilter('gotra', gotra)}
           options={options?.gotras ?? []}
         />
         <ChipSelect
           label="Occupation"
           value={filters.occupation}
-          onChange={(occupation) => setFilters((f) => ({ ...f, occupation }))}
+          onChange={(occupation) => setFilter('occupation', occupation)}
           options={options?.occupations ?? []}
         />
         {anyFilter && (
           <button
             type="button"
-            onClick={() => setFilters(EMPTY_FILTERS)}
+            onClick={() => {
+              setFilters(EMPTY_FILTERS)
+              setOneFilterNote(false)
+            }}
             className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] px-1 transition-colors"
           >
             Clear
           </button>
         )}
       </div>
+
+      {oneFilterNote && !directoryAccess && (
+        <LockedFeature
+          service="directory"
+          title="One filter at a time. Combining filters is part of Directory access."
+          compact
+        />
+      )}
+
+      {!directoryAccess && opensLeft !== null && (
+        <p className="text-xs text-[var(--color-text-muted)]">
+          {opensLeft} of {DIRECTORY_DAILY_LIMIT} profile views left today. Search and browse as much
+          as you like.
+        </p>
+      )}
 
       {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}
 

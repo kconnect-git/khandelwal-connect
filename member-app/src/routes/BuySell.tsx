@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ChipSelect } from '../components/ChipSelect'
 import { TabStrip } from '../components/TabStrip'
 import { PostCard } from '../components/businesses/PostCard'
+import { LockedFeature } from '../components/LockedFeature'
+import { useServiceAccess } from '../context/ServiceAccessContext'
 import { listBusinessPosts } from '../lib/businessPosts'
 import { BUSINESS_CATEGORY_OPTIONS } from '../lib/formOptions'
 import type { BusinessPostRow } from '../types/database'
@@ -26,6 +28,7 @@ const EMPTY_MESSAGES: Record<Tab, string> = {
 }
 
 export function BuySell() {
+  const { hasAccess } = useServiceAccess()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = tabFromParam(searchParams.get('tab'))
   // (10.8) The dashboard's "requirements match your category" lands here
@@ -196,12 +199,21 @@ export function BuySell() {
         <p className="text-sm text-[var(--color-text-muted)]">
           Need something, or have something to offer?
         </p>
-        <Link
-          to={tab === 'offers' ? '/business/market/new?kind=offer' : '/business/market/new'}
-          className="rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] transition-colors"
-        >
-          Post a requirement or offer
-        </Link>
+        {/* (11.5) Posting is part of Business access; reading stays free. */}
+        {hasAccess('business') ? (
+          <Link
+            to={tab === 'offers' ? '/business/market/new?kind=offer' : '/business/market/new'}
+            className="rounded-lg bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] transition-colors"
+          >
+            Post a requirement or offer
+          </Link>
+        ) : (
+          <LockedFeature
+            service="business"
+            title="Posting is part of Business access."
+            compact
+          />
+        )}
       </div>
     </div>
   )

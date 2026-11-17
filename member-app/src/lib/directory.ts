@@ -1,5 +1,26 @@
 import { supabase } from '../utils/supabase'
 
+// (11.4) Directory paywall. Without Directory access the server nulls the
+// paid fields, refuses combined filters (SQLSTATE KCL02) and allows 10
+// different profiles a day (KCL01). These errors let screens show the
+// right message instead of a generic failure.
+export const DIRECTORY_DAILY_LIMIT = 10
+
+export class DirectoryLimitError extends Error {
+  readonly kind: 'daily_limit' | 'combined_filters'
+  constructor(kind: 'daily_limit' | 'combined_filters', message: string) {
+    super(message)
+    this.name = 'DirectoryLimitError'
+    this.kind = kind
+  }
+}
+
+function directoryError(error: { code?: string; message: string }): Error {
+  if (error.code === 'KCL01') return new DirectoryLimitError('daily_limit', error.message)
+  if (error.code === 'KCL02') return new DirectoryLimitError('combined_filters', error.message)
+  return error as Error
+}
+
 export type DirectoryEntry = {
   id: string
   full_name: string
@@ -64,7 +85,7 @@ export async function listDirectory(params: {
     p_offset: params.offset ?? 0,
   })
 
-  if (error) throw error
+  if (error) throw directoryError(error)
   return data ?? []
 }
 
@@ -73,8 +94,15 @@ export async function getMemberProfile(personId: string): Promise<MemberProfile 
     p_person_id: personId,
   })
 
-  if (error) throw error
+  if (error) throw directoryError(error)
   return data && data.length > 0 ? data[0] : null
+}
+
+/** (11.4) Profiles the caller can still open today; null = unlimited. */
+export async function getMyDirectoryOpensLeft(): Promise<number | null> {
+  const { data, error } = await supabase.rpc('my_directory_opens_left')
+  if (error) throw error
+  return data ?? null
 }
 
 export async function getDirectoryFilterOptions(): Promise<DirectoryFilterOptions> {

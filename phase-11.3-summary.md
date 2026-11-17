@@ -14,6 +14,12 @@
 | **Home card** | "**You now have Matrimony access** · until 17 Dec 2026" (or "**Matrimony access extended**"), with **Open Matrimony ›** and ✕, one per service with an unseen grant. Dismissing it, or opening the service, stores the dismissal on the grant in the database, so it stays gone on every device. It sits below the notices strip, and is deliberately not the accent colour. This replaces a personal notification feed for now (decided 2026-11-17). |
 | **Paid badge** | A small outlined **PREMIUM** pill beside the name in the Directory list and under the member code on a member's profile. The server decides: the member holds a live grant for **any** service **and** at least one paywall is on. Admins get every service free but no badge unless they also hold a grant. |
 
+### Added after 11.3: access news in the bell (2026-11-17)
+
+The bell (`NoticeBell`) now counts unread notices **plus** unseen access news. The Notices page lists the news under **Your access**, above the notices: "You now have {Service} access" / "{Service} access extended", "Until {date}", **Open {Service} ›**, and a New tag. Opening the page marks them seen, the same way it marks notices read. That clears the badge and the Home card together, while the items stay listed for that visit.
+
+There's no schema change; it uses the same `my_access_news` and `dismiss_access_news`. The files are `components/NoticeBell.tsx` and `routes/Notices.tsx`. It came out of testing: the email arrived, but the tester expected the bell, not the Home card.
+
 ## 2. Schema / backend (migration `0035_access_member_side.sql`, mirrored in `ddl/core_schema.sql`)
 
 The whole migration runs in one transaction.

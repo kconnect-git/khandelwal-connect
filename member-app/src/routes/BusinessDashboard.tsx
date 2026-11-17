@@ -14,6 +14,8 @@ import { Avatar } from '../components/Avatar'
 import { StatCounter } from '../components/StatCounter'
 import { SelectField } from '../components/form/SelectField'
 import type { BusinessDashboardStats, BusinessEnquiryRow, BusinessRow } from '../types/database'
+import { LockedFeature } from '../components/LockedFeature'
+import { useServiceAccess } from '../context/ServiceAccessContext'
 
 // Phase 10.8: My Business Dashboard -- one live listing at a time
 // (?business=<id>): how complete it is, this month's numbers, open
@@ -146,6 +148,8 @@ function ListingDashboard({ listing }: { listing: BusinessRow }) {
   const [error, setError] = useState<string | null>(null)
 
   const completeness = listingCompleteness(listing)
+  const { hasAccess } = useServiceAccess()
+  const enquiriesAccess = hasAccess('business')
 
   const load = useCallback(async () => {
     const [loadedStats, open] = await Promise.all([
@@ -241,6 +245,7 @@ function ListingDashboard({ listing }: { listing: BusinessRow }) {
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className={SECTION_HEADING}>New enquiries</h2>
+          {enquiriesAccess && (
           <button
             type="button"
             onClick={toggleHandled}
@@ -248,8 +253,21 @@ function ListingDashboard({ listing }: { listing: BusinessRow }) {
           >
             {showHandled ? 'Hide handled' : 'Show handled'}
           </button>
+          )}
         </div>
-        {enquiries.length === 0 ? (
+        {!enquiriesAccess ? (
+          // (11.5) Counts stay free; reading enquiries is part of Business
+          // access (list_business_enquiries returns nothing without it).
+          <LockedFeature
+            service="business"
+            title={
+              stats && stats.enquiries_new > 0
+                ? `${plural(stats.enquiries_new, 'enquiry', 'enquiries')} waiting for you`
+                : 'Read and reply to enquiries'
+            }
+            description="See who enquired and reply to them on WhatsApp with Business access."
+          />
+        ) : enquiries.length === 0 ? (
           <p className="text-sm text-[var(--color-text-muted)]">No new enquiries.</p>
         ) : (
           <ul className="flex flex-col gap-2">

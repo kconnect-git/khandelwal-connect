@@ -15,6 +15,8 @@ import { Avatar } from '../components/Avatar'
 import { ReportDialog } from '../components/ReportDialog'
 import { VerifiedTag } from '../components/businesses/VerifiedTag'
 import { EnquiryDialog } from '../components/businesses/EnquiryDialog'
+import { LockedFeature } from '../components/LockedFeature'
+import { useServiceAccess } from '../context/ServiceAccessContext'
 import { sendBusinessEnquiry } from '../lib/businessDashboard'
 
 const ACTION_BUTTON =
@@ -67,6 +69,10 @@ export function BusinessDetail() {
   const [actionError, setActionError] = useState<string | null>(null)
   // (10.8) Enquire: undefined = closed; null = General; a string = that product.
   const [enquiryAbout, setEnquiryAbout] = useState<string | null | undefined>(undefined)
+  // (11.5) Business paywall: without access the server returns no phone,
+  // email, website or links, and refuses enquiries. Owners always see their own.
+  const { hasAccess } = useServiceAccess()
+  const businessAccess = hasAccess('business')
   const [enquiryBusy, setEnquiryBusy] = useState(false)
   const [enquirySent, setEnquirySent] = useState(false)
 
@@ -132,6 +138,7 @@ export function BusinessDetail() {
   }
 
   const isOwner = ownId !== null && ownId === business.owner_id
+  const locked = !isOwner && !businessAccess
   const phoneDigits = (business.contact_phone ?? '').replace(/\D/g, '')
   const subtitle = businessMetaLine(business)
   const officeAddress =
@@ -242,6 +249,13 @@ export function BusinessDetail() {
         >
           Edit listing
         </Link>
+      ) : locked ? (
+        <LockedFeature
+          service="business"
+          title={`Upgrade to contact ${business.name}`}
+          description="Phone, WhatsApp, email, website and enquiries are part of Business access."
+          compact
+        />
       ) : (
         // (10.8) Always shown to other members: Enquire works even when the
         // owner hides their number.
@@ -312,7 +326,7 @@ export function BusinessDetail() {
             {business.products.map((product) => (
               <li key={product}>
                 {/* (10.8) Tap a product to ask about it. */}
-                {isOwner || enquirySent ? (
+                {isOwner || enquirySent || locked ? (
                   <span className="block rounded-full border border-[var(--color-border)] px-4 py-1.5 text-sm">
                     {product}
                   </span>

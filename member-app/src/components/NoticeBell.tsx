@@ -1,11 +1,16 @@
 import { Link } from 'react-router-dom'
 import { useNotices } from '../context/NoticesContext'
+import { useServiceAccess } from '../context/ServiceAccessContext'
 
 // Phase 5c: header bell -> /notices, with an unread badge. It lives in the
 // header rather than the tab bar, which is already at its width limit.
+// (11.3) The count also includes unseen "access granted" news, which the
+// Notices page lists above the notices.
 
 export function NoticeBell() {
-  const { unreadCount } = useNotices()
+  const { unreadCount: noticeCount } = useNotices()
+  const { news } = useServiceAccess()
+  const unreadCount = noticeCount + news.length
   const label =
     unreadCount > 0 ? `Notices, ${unreadCount} unread` : 'Notices'
 

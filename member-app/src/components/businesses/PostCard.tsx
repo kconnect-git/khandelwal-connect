@@ -15,6 +15,8 @@ import { Avatar } from '../Avatar'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { ReportDialog } from '../ReportDialog'
 import type { BusinessPostResponder, BusinessPostRow, BusinessPostStatus } from '../../types/database'
+import { LockedFeature } from '../LockedFeature'
+import { useServiceAccess } from '../../context/ServiceAccessContext'
 
 // Phase 10.6: one Buy & Sell post. Browsing: Respond (records it, then
 // hands over to WhatsApp), Save, Report. On the poster's own "Mine" tab:
@@ -61,6 +63,11 @@ export function PostCard({
   const [pending, setPending] = useState<Pending>(null)
   const [responders, setResponders] = useState<BusinessPostResponder[] | null>(null)
   const [showResponders, setShowResponders] = useState(false)
+  // (11.5) Responding reveals the poster's number: Business access, unless
+  // they already responded (the server allows that after a lapse too).
+  const { hasAccess } = useServiceAccess()
+  const respondLocked = !hasAccess('business') && !responded
+  const [showLock, setShowLock] = useState(false)
 
   const metaLine = [post.terms, post.city].filter(Boolean).join(' · ')
   const byLine = [post.poster_name, post.business_name].filter(Boolean).join(' · ')
@@ -250,7 +257,7 @@ export function PostCard({
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={handleRespond}
+              onClick={respondLocked ? () => setShowLock(true) : handleRespond}
               disabled={busy}
               className={responded ? OUTLINE : PRIMARY}
             >
@@ -265,6 +272,13 @@ export function PostCard({
               {saved ? 'Saved' : 'Save'}
             </button>
           </div>
+          {showLock && respondLocked && (
+            <LockedFeature
+              service="business"
+              title="Responding to posts is part of Business access."
+              compact
+            />
+          )}
           <button
             type="button"
             onClick={() => setReportOpen(true)}

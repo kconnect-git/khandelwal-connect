@@ -1,6 +1,6 @@
 # Directory — Free vs Paid
 
-Status: **Decided** (2026-11-16). Not yet implemented.
+Status: **Built in Phase 11.4** (2026-11-17, migration `0036`). Live once a super admin turns the Directory paywall on in /admin/access.
 
 Part of the paywall plan: every service gets a free tier and a paid tier.
 The general rule across the app: free members can see **who and what exists**;
@@ -33,6 +33,13 @@ a member can already hide their own mobile number.
 2. **Marital status is hidden from free members**, so the Directory can't be used as a
    free way round Matrimony.
 3. **Daily limit: 10 profile opens per day** for free members (also limits scraping).
+
+## Added while building (11.4)
+
+- **Job title and company are hidden on the opened profile too,** not only on list cards. Otherwise they'd be one tap away.
+- **Family linking (Profile → relatives) no longer returns a relative's mobile** without Directory access, because the name search would otherwise hand out what the Directory locks. Free members type the number themselves.
+- **Name search combines with one filter.** Only state, city, gotra and occupation count towards "one at a time".
+- **The day is India time.** The allowance resets at midnight IST.
 
 ## Notes for implementation
 
