@@ -9,6 +9,7 @@ import { listEvents } from '../lib/events'
 import { getFamilyNameCompletionFlags } from '../lib/familyDetails'
 import { clearReturnTo } from '../lib/returnTo'
 import { NoticeStrip } from '../components/NoticeStrip'
+import { AccessNewsCards } from '../components/AccessNewsCards'
 import { useMatrimony } from '../context/MatrimonyContext'
 import type { Person } from '../types/database'
 
@@ -85,6 +86,9 @@ export function Dashboard() {
 
       {/* (5c) Unread notices, above everything else on the page. */}
       <NoticeStrip />
+
+      {/* (11.3) "You now have X access" until dismissed. */}
+      <AccessNewsCards />
 
       {/* (6b) Only when there's something to act on: new interests or
           matches. Not the accent -- the membership card is this screen's

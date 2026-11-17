@@ -1,6 +1,6 @@
 # Phase 11 Plan — Paid Services (Access Add-ons)
 
-> **Status: in progress.** 11.1 ✅ built — see `phase-11.1-summary.md`.
+> **Status: in progress.** 11.1 ✅, 11.2 ✅ and 11.3 ✅ built — see `phase-11.1-summary.md`, `phase-11.2-summary.md` and `phase-11.3-summary.md`.
 
 Phase 11 puts four services behind per-service monthly add-ons: **Directory, Business,
 Events and Matrimony**. Payment happens offline for now:
@@ -30,13 +30,13 @@ Migrations continue from `0034`.
 | Sub-phase | What | Depends on | Migration |
 |---|---|---|---|
 | **11.1** ✅ | Access foundation: tables, `has_service_access()`, request/grant RPCs, per-service switch | — | `0034` |
-| **11.2** | Admin portal: requests queue, grant / extend / revoke, access panel on member detail, "access granted" email | 11.1 | — (edge fn) |
-| **11.3** | Member side: "My access" in Profile, `<LockedFeature>` + Request access, paid badge | 11.1 | — |
-| **11.4** | Directory gating | 11.1, 11.3 | `0035` |
-| **11.5** | Business gating | 11.1, 11.3 | `0036` |
-| **11.6** | Events gating | 11.1, 11.3 | `0037` |
-| **11.7** | Matrimony gating | 11.1, 11.3 | `0038` |
-| **11.8** | Expiry reminder email (5 days before) | 11.2 | `0039` (schedule) |
+| **11.2** ✅ | Admin portal: requests queue, grant / extend / revoke, access panel on member detail, "access granted" email | 11.1 | — (edge fn) |
+| **11.3** ✅ | Member side: "My access" in Profile, `<LockedFeature>` + Request access, paid badge, Home "access granted" card | 11.1 | `0035` |
+| **11.4** | Directory gating | 11.1, 11.3 | `0036` |
+| **11.5** | Business gating | 11.1, 11.3 | `0037` |
+| **11.6** | Events gating | 11.1, 11.3 | `0038` |
+| **11.7** | Matrimony gating | 11.1, 11.3 | `0039` |
+| **11.8** | Expiry reminder email (5 days before) | 11.2 | `0040` (schedule) |
 
 The sub-phases from 11.4 to 11.7 don't depend on each other, so they can ship in any order. Each service's switch stays **off** until that service is ready (see §3).
 
@@ -73,7 +73,7 @@ The sub-phases from 11.4 to 11.7 don't depend on each other, so they can ship in
   - `admin_member_access_history(person)`: every grant, newest first
 - **Overview stats:** `admin_overview_stats` gains an `access_requests_open` count.
 
-### 11.2 — Admin portal
+### 11.2 — Admin portal — ✅ built, see `phase-11.2-summary.md`
 
 - **New page `/admin/access`** with two tabs:
   - **Requests:** open requests showing member, service, message, date and the member's email.
@@ -85,9 +85,9 @@ The sub-phases from 11.4 to 11.7 don't depend on each other, so they can ship in
 - **Edge function `send-access-granted`:** tells the member which service they got and until when. It follows the same guards as `send-member-status`: it re-reads the grant from the database and never trusts the client body. A failure doesn't block the grant.
 - **Admin nav:** an Access tab with an open-requests badge.
 
-### 11.3 — Member side
+### 11.3 — Member side — ✅ built, see `phase-11.3-summary.md`
 
-- **`ServiceAccessContext`:** loads `my_service_access()` once and refreshes it when the member requests access.
+- **`ServiceAccessContext`:** loads `my_service_access()` once **the member is signed in**, and refreshes it when they request access. The function isn't executable by `anon`, so calling it signed-out errors.
 - **`<LockedFeature service=… title=… >`:** an "Upgrade to …" card used everywhere a feature is locked. It shows one of:
   - a **Request access** button, with an optional message
   - "Request sent on <date> — the committee will email you"
@@ -95,7 +95,9 @@ The sub-phases from 11.4 to 11.7 don't depend on each other, so they can ship in
 - **Profile → "My access" section:** each paid service with its status, end date and a Request button. This is a section, not a new tab, to keep the tab list as it is.
 - **Paid badge:** a small "Member" badge when the person has *any* active add-on. `list_directory` and `get_member_profile` return `has_paid_access boolean` to support it. The badge only appears once at least one service is enforced.
 
-### 11.4 — Directory gating (`0035`)
+> **Each of 11.4–11.7:** set that service's entry in `PAYWALL_READY` (`lib/serviceAccess.ts`) to `true`, so the admin page offers Turn on.
+
+### 11.4 — Directory gating (`0036`)
 
 Follows `directory-paid-features.md`.
 - **`list_directory`:**
@@ -112,7 +114,7 @@ Follows `directory-paid-features.md`.
   - a limit-reached screen
   - filter chips allow only one active filter at a time
 
-### 11.5 — Business gating (`0036`)
+### 11.5 — Business gating (`0037`)
 
 Follows `business-paid-features.md`.
 - **`get_business`:** without access, it returns null phone, email, website and social links. The owner always sees their own listing in full.
@@ -123,7 +125,7 @@ Follows `business-paid-features.md`.
 - **Free for everyone:** listing a business, referrals, saves and reports.
 - **UI:** `<LockedFeature>` replaces the contact buttons, the Enquire button, Respond / Post in Buy & Sell, and the enquiries list on the dashboard.
 
-### 11.6 — Events gating (`0037`)
+### 11.6 — Events gating (`0038`)
 
 Follows `events-paid-features.md`.
 - **Need access:** `create_event` and the invitee and email RPCs (`add_event_invitee`, `remove_event_invitee`, `send-event-invite`).
@@ -131,7 +133,7 @@ Follows `events-paid-features.md`.
 - **Lapsed access:** a member whose access has lapsed can still edit and cancel events they already created. Only creating a new event is blocked.
 - **Free for everyone:** browsing and joining.
 
-### 11.7 — Matrimony gating (`0038`)
+### 11.7 — Matrimony gating (`0039`)
 
 Follows `matrimony-paid-features.md`. This is the largest change.
 - **Browsing:** `list_matrimony_profiles` and `get_matrimony_profile` change their access check.
@@ -153,7 +155,7 @@ Follows `matrimony-paid-features.md`. This is the largest change.
   - Interests show who sent them to everyone.
   - Send interest is gated.
 
-### 11.8 — Expiry reminders (`0039`)
+### 11.8 — Expiry reminders (`0040`)
 
 - **Edge function `send-access-expiring`:** emails each member whose grant ends in 5 days.
 - **No repeat emails:** a `reminded_at` column on the grant stops a member getting the same reminder twice.

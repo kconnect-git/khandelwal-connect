@@ -5,6 +5,7 @@ import { getOwnPerson } from '../lib/people'
 import { getMemberProfile, type MemberProfile as MemberProfileData } from '../lib/directory'
 import { businessMetaLine, listMemberBusinesses, type MemberBusiness } from '../lib/businesses'
 import { Avatar } from '../components/Avatar'
+import { PaidBadge } from '../components/PaidBadge'
 
 // Flat section in the design doc's member-profile style: small uppercase
 // muted header, then label-left / value-right rows separated by hairlines.
@@ -131,8 +132,9 @@ export function MemberProfile() {
             {profile.full_name}
           </h1>
           {subtitle && <p className="text-sm text-[var(--color-text-muted)] mt-1">{subtitle}</p>}
-          <p className="text-xs tracking-wide text-[var(--color-text-muted)] mt-0.5">
+          <p className="flex items-center gap-2 text-xs tracking-wide text-[var(--color-text-muted)] mt-0.5">
             {profile.member_code}
+            <PaidBadge show={profile.has_paid_badge} />
           </p>
         </div>
       </div>

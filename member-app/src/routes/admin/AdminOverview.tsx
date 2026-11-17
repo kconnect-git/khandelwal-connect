@@ -51,6 +51,12 @@ function tilesFor(stats: AdminOverviewStats): Tile[] {
       urgent: (stats.business_reports_open ?? 0) > 0,
     },
     {
+      label: 'Access requests',
+      value: stats.access_requests_open ?? 0,
+      to: '/admin/access',
+      urgent: (stats.access_requests_open ?? 0) > 0,
+    },
+    {
       label: 'Waiting on member',
       value: byStatus.info_requested ?? 0,
       to: '/admin/approvals?status=info_requested',

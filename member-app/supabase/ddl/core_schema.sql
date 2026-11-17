@@ -1015,6 +1015,8 @@ create table service_access_grants (
   revoked_at timestamptz,
   revoked_by uuid references auth.users(id),
   revoke_note text check (revoke_note is null or length(revoke_note) <= 500),
+  -- (0035) when the member dismissed the Home "access granted" card
+  member_seen_at timestamptz,
   constraint service_access_grants_period_check check (ends_at > starts_at)
 );
 
@@ -1099,6 +1101,27 @@ $$;
 
 revoke all on function is_approved_member() from public;
 grant execute on function is_approved_member() to authenticated;
+
+-- (0035) Phase 11.3: the paid badge -- a live grant for any service while at
+-- least one paywall is on. Here, not with the other 0034 helpers, because
+-- list_directory / get_member_profile below call it.
+create or replace function has_paid_badge(p_person_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from paid_service_settings where enforced)
+     and exists (select 1 from service_access_grants g
+                 where g.person_id = p_person_id
+                   and g.revoked_at is null
+                   and g.starts_at <= now()
+                   and g.ends_at > now());
+$$;
+
+revoke all on function has_paid_badge(uuid) from public;
+revoke all on function has_paid_badge(uuid) from anon, authenticated;
 
 -- Phase 2: family details RPCs (see migrations 0006/0007 for how these were
 -- introduced).
@@ -1406,6 +1429,8 @@ grant execute on function update_child(uuid, text, text, text, date, text, text,
 -- call gives both a page and the stat-block number.
 -- (0013) occupation_type/job_title/company_name join the directory tier;
 -- get_member_profile adds job_location; list_directory gains p_occupation.
+-- (0035) Both gain has_paid_badge (Phase 11.3). A new return column means
+-- drop + create in the migration; here it's a fresh build, so create.
 create or replace function list_directory(
   p_search text default null,
   p_state text default null,
@@ -1427,6 +1452,7 @@ returns table (
   occupation_type text,
   job_title text,
   company_name text,
+  has_paid_badge boolean,
   total_count bigint
 )
 language sql
@@ -1437,6 +1463,7 @@ as $$
   select p.id, p.full_name, p.gotra, p.native_place, p.current_city, p.current_state,
          p.member_code, p.profile_photo_url,
          p.occupation_type, p.job_title, p.company_name,
+         has_paid_badge(p.id),
          count(*) over () as total_count
   from people p
   where is_approved_member()
@@ -1454,6 +1481,7 @@ $$;
 
 revoke all on function list_directory(text, text, text, text, text, int, int) from public;
 grant execute on function list_directory(text, text, text, text, text, int, int) to authenticated;
+revoke execute on function list_directory(text, text, text, text, text, int, int) from anon;
 
 create or replace function get_member_profile(p_person_id uuid)
 returns table (
@@ -1472,7 +1500,8 @@ returns table (
   occupation_type text,
   job_title text,
   company_name text,
-  job_location text
+  job_location text,
+  has_paid_badge boolean
 )
 language sql
 stable
@@ -1483,7 +1512,8 @@ as $$
          p.current_state, p.member_code, p.education, p.marital_status,
          case when p.hide_mobile and not is_admin() then null else p.mobile_number end,
          p.profile_photo_url,
-         p.occupation_type, p.job_title, p.company_name, p.job_location
+         p.occupation_type, p.job_title, p.company_name, p.job_location,
+         has_paid_badge(p.id)
   from people p
   where p.id = p_person_id
     and (is_approved_member() or is_admin())
@@ -1492,6 +1522,7 @@ $$;
 
 revoke all on function get_member_profile(uuid) from public;
 grant execute on function get_member_profile(uuid) to authenticated;
+revoke execute on function get_member_profile(uuid) from anon;
 
 -- Same (kind, value) shape as before, plus an 'occupation' kind. Column
 -- list is unchanged, so create or replace is fine here.
@@ -2930,6 +2961,7 @@ $$;
 
 revoke all on function admin_overview_stats() from public;
 grant execute on function admin_overview_stats() to authenticated;
+revoke execute on function admin_overview_stats() from anon;
 
 -- ================================================================
 -- Phase 5b-2 (0021): business moderation + admin management
@@ -6487,6 +6519,7 @@ $$;
 
 revoke all on function my_service_access() from public;
 grant execute on function my_service_access() to authenticated;
+revoke execute on function my_service_access() from anon;
 
 -- "Request access". Allowed while the member already has access, so they
 -- can ask to renew before it runs out. One open request per service.
@@ -6526,6 +6559,7 @@ $$;
 
 revoke all on function request_service_access(text, text) from public;
 grant execute on function request_service_access(text, text) to authenticated;
+revoke execute on function request_service_access(text, text) from anon;
 
 -- ================================================================
 -- admin RPCs: reads
@@ -6561,6 +6595,7 @@ $$;
 
 revoke all on function admin_list_service_settings() from public;
 grant execute on function admin_list_service_settings() to authenticated;
+revoke execute on function admin_list_service_settings() from anon;
 
 -- The request queue. Open requests oldest first (it's a queue); granted /
 -- dismissed newest-handled first. email is the login email, so the admin
@@ -6617,6 +6652,7 @@ $$;
 
 revoke all on function admin_list_access_requests(text, text, int, int) from public;
 grant execute on function admin_list_access_requests(text, text, int, int) to authenticated;
+revoke execute on function admin_list_access_requests(text, text, int, int) from anon;
 
 -- Members holding access right now, one row per member + service, soonest
 -- to run out first. p_expiring_days narrows to those ending within N days.
@@ -6668,6 +6704,7 @@ $$;
 
 revoke all on function admin_list_service_access(text, int, int, int) from public;
 grant execute on function admin_list_service_access(text, int, int, int) to authenticated;
+revoke execute on function admin_list_service_access(text, int, int, int) from anon;
 
 -- One member's access per service, for the Access panel on member detail.
 -- has_grant is about grants only (not "service is off" or "is an admin").
@@ -6701,6 +6738,7 @@ $$;
 
 revoke all on function admin_member_access(uuid) from public;
 grant execute on function admin_member_access(uuid) to authenticated;
+revoke execute on function admin_member_access(uuid) from anon;
 
 -- Every grant a member has had, newest first.
 create or replace function admin_member_access_history(p_person_id uuid)
@@ -6735,6 +6773,7 @@ $$;
 
 revoke all on function admin_member_access_history(uuid) from public;
 grant execute on function admin_member_access_history(uuid) to authenticated;
+revoke execute on function admin_member_access_history(uuid) from anon;
 
 -- ================================================================
 -- admin RPCs: writes
@@ -6819,6 +6858,7 @@ $$;
 
 revoke all on function admin_grant_service_access(uuid, text, int, text) from public;
 grant execute on function admin_grant_service_access(uuid, text, int, text) to authenticated;
+revoke execute on function admin_grant_service_access(uuid, text, int, text) from anon;
 
 -- Take a service away now: revokes every live or queued grant for that
 -- member + service. Things the member already has keep working per the
@@ -6870,6 +6910,7 @@ $$;
 
 revoke all on function admin_revoke_service_access(uuid, text, text) from public;
 grant execute on function admin_revoke_service_access(uuid, text, text) to authenticated;
+revoke execute on function admin_revoke_service_access(uuid, text, text) from anon;
 
 -- Close a request without granting (didn't pay, duplicate, etc.). The
 -- member can ask again.
@@ -6909,6 +6950,7 @@ $$;
 
 revoke all on function admin_dismiss_access_request(uuid, text) from public;
 grant execute on function admin_dismiss_access_request(uuid, text) to authenticated;
+revoke execute on function admin_dismiss_access_request(uuid, text) from anon;
 
 -- Turn a service's paywall on or off. Super admin only.
 create or replace function admin_set_service_enforced(p_service text, p_enforced boolean)
@@ -6951,3 +6993,64 @@ $$;
 
 revoke all on function admin_set_service_enforced(text, boolean) from public;
 grant execute on function admin_set_service_enforced(text, boolean) to authenticated;
+revoke execute on function admin_set_service_enforced(text, boolean) from anon;
+
+-- ================================================================
+-- Phase 11.3 (0035): member side -- the Home "access granted" card
+-- ================================================================
+
+-- One row per service with unseen live grants. extended = every unseen
+-- grant was chained onto access the member already had (it starts after it
+-- was made); a brand-new grant plus an extension of it reads as new.
+create or replace function my_access_news()
+returns table (
+  service text,
+  extended boolean,
+  ends_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select g.service,
+         bool_and(g.starts_at > g.created_at + interval '1 minute'),
+         service_access_ends_at(me.id, g.service)
+  from (select p.id from people p
+        where p.auth_user_id = auth.uid() and p.member_status = 'approved') me
+  join service_access_grants g on g.person_id = me.id
+  where g.member_seen_at is null
+    and g.revoked_at is null
+    and g.ends_at > now()
+  group by me.id, g.service
+  order by array_position(array['directory', 'business', 'events', 'matrimony'], g.service);
+$$;
+
+revoke all on function my_access_news() from public;
+grant execute on function my_access_news() to authenticated;
+revoke execute on function my_access_news() from anon;
+
+create or replace function dismiss_access_news(p_service text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me uuid;
+begin
+  select id into v_me from people where auth_user_id = auth.uid() and member_status = 'approved';
+  if v_me is null then
+    raise exception 'Only approved members can do this';
+  end if;
+  update service_access_grants
+  set member_seen_at = now()
+  where person_id = v_me
+    and service = p_service
+    and member_seen_at is null;
+end;
+$$;
+
+revoke all on function dismiss_access_news(text) from public;
+grant execute on function dismiss_access_news(text) to authenticated;
+revoke execute on function dismiss_access_news(text) from anon;

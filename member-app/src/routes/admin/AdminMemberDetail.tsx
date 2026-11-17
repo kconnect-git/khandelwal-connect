@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Avatar } from '../../components/Avatar'
 import { AuditList } from '../../components/admin/AuditList'
+import { MemberAccessPanel } from '../../components/admin/MemberAccessPanel'
 import { StatusBadge } from '../../components/admin/StatusBadge'
 import { useAdmin } from '../../context/AdminContext'
 import { useMemberDecision } from '../../hooks/useMemberDecision'
@@ -250,6 +251,15 @@ export function AdminMemberDetail() {
           {decision.emailNote}
           {resendNote && <p className="text-sm text-[var(--color-text-muted)]">{resendNote}</p>}
         </div>
+      </Section>
+
+      <Section title="Paid access">
+        <MemberAccessPanel
+          personId={member.id}
+          fullName={member.full_name}
+          approved={status === 'approved'}
+          onChanged={load}
+        />
       </Section>
 
       <Section title="Personal">

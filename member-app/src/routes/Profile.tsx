@@ -27,6 +27,7 @@ import { validateProfileTab } from './wizard/validation'
 import { ProfileLoadError } from '../components/guards/ProfileLoadError'
 import { ProfilePhotoControl } from '../components/profile/ProfilePhotoControl'
 import { ProfileTabs } from '../components/profile/ProfileTabs'
+import { MyAccessSection } from '../components/profile/MyAccessSection'
 import {
   IDLE_SAVE_STATE,
   type RelationMap,
@@ -234,6 +235,10 @@ export function Profile() {
           </p>
         )}
       </div>
+
+      {/* (11.3) Paid services. Hidden while every paywall is off and the
+          member holds nothing. */}
+      {person.member_status === 'approved' && <MyAccessSection />}
 
       <ProfileTabs active={tab} onChange={selectTab} />
 

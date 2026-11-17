@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
+import { PaidBadge } from '../components/PaidBadge'
 import { ChipSelect } from '../components/ChipSelect'
 import {
   getDirectoryFilterOptions,
@@ -193,7 +194,10 @@ export function Directory() {
               >
                 <Avatar name={entry.full_name} photoUrl={entry.profile_photo_url} size={40} />
                 <span className="flex flex-col min-w-0">
-                  <span className="font-heading font-medium truncate">{entry.full_name}</span>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="font-heading font-medium truncate">{entry.full_name}</span>
+                    <PaidBadge show={entry.has_paid_badge} />
+                  </span>
                   {metaLine(entry) && (
                     <span className="text-sm text-[var(--color-text-muted)] truncate">
                       {metaLine(entry)}

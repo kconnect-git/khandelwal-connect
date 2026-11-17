@@ -889,6 +889,16 @@ export type MyServiceAccessRow = {
   open_request_at: string | null
 }
 
+/** (0035) One row of my_access_news(): unseen live grants for a service,
+ *  for the Home "access granted" card. */
+export type MyAccessNewsRow = {
+  service: PaidService
+  /** Every unseen grant extends access the member already had. */
+  extended: boolean
+  /** End of the whole run of grants. */
+  ends_at: string
+}
+
 /** One row of admin_list_service_settings(). */
 export type AdminServiceSettingRow = {
   service: PaidService
@@ -1146,6 +1156,15 @@ export type Database = {
       request_service_access: {
         Args: { p_service: PaidService; p_message?: string | null }
         Returns: string
+      }
+      // (0035) Phase 11.3 member side
+      my_access_news: {
+        Args: Record<PropertyKey, never>
+        Returns: MyAccessNewsRow[]
+      }
+      dismiss_access_news: {
+        Args: { p_service: PaidService }
+        Returns: void
       }
       admin_list_service_settings: {
         Args: Record<PropertyKey, never>
@@ -1611,6 +1630,8 @@ export type Database = {
           occupation_type: string | null
           job_title: string | null
           company_name: string | null
+          /** (0035) live grant for any service while a paywall is on */
+          has_paid_badge: boolean
           total_count: number
         }[]
       }
@@ -1635,6 +1656,8 @@ export type Database = {
           job_title: string | null
           company_name: string | null
           job_location: string | null
+          /** (0035) */
+          has_paid_badge: boolean
         }[]
       }
       directory_filter_options: {

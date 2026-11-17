@@ -1,4 +1,5 @@
 import { supabase } from '../utils/supabase'
+import { invokeEdgeFunction } from './edgeFunctions'
 import type {
   AccessMonths,
   AccessRequestStatus,
@@ -7,6 +8,7 @@ import type {
   AdminMemberAccessRow,
   AdminServiceAccessRow,
   AdminServiceSettingRow,
+  MyAccessNewsRow,
   MyServiceAccessRow,
   PaidService,
 } from '../types/database'
@@ -23,6 +25,17 @@ export const PAID_SERVICE_LABELS: Record<PaidService, string> = {
   business: 'Business',
   events: 'Events',
   matrimony: 'Matrimony',
+}
+
+/** (11.2) Whether a service's gated RPCs and locked UI have shipped
+ *  (11.4 Directory, 11.5 Business, 11.6 Events, 11.7 Matrimony). The admin
+ *  page won't offer "Turn on" until then: a switch with nothing behind it
+ *  would lock nothing. Flip each one in the sub-phase that gates it. */
+export const PAYWALL_READY: Record<PaidService, boolean> = {
+  directory: false,
+  business: false,
+  events: false,
+  matrimony: false,
 }
 
 export const ACCESS_MONTH_OPTIONS: AccessMonths[] = [1, 3, 12]
@@ -48,6 +61,27 @@ export async function requestServiceAccess(service: PaidService, message?: strin
     p_message: message?.trim() || null,
   })
   if (error) throw error
+}
+
+/** (11.3) Unseen live grants, one row per service, for the Home card. */
+export async function getMyAccessNews(): Promise<MyAccessNewsRow[]> {
+  const { data, error } = await supabase.rpc('my_access_news')
+  if (error) throw error
+  return data ?? []
+}
+
+/** (11.3) Hide the Home card for that service until the next grant. */
+export async function dismissAccessNews(service: PaidService): Promise<void> {
+  const { error } = await supabase.rpc('dismiss_access_news', { p_service: service })
+  if (error) throw error
+}
+
+/** (11.3) What each paid service unlocks, for the member-facing cards. */
+export const PAID_SERVICE_UNLOCKS: Record<PaidService, string> = {
+  directory: 'Call or WhatsApp members, see full profiles, combine filters, and open as many profiles as you like.',
+  business: 'Contact businesses, send enquiries, post and respond in Buy & Sell, and read your dashboard enquiries.',
+  events: 'Create events and invite members.',
+  matrimony: 'Browse every matrimony profile and send interests.',
 }
 
 // ---------------------------------------------------------------- admin reads
@@ -143,6 +177,33 @@ export async function adminDismissAccessRequest(requestId: string, note?: string
     p_note: note?.trim() || null,
   })
   if (error) throw error
+}
+
+/** (11.2) Emails the member about a grant. The function re-reads the grant
+ *  and member from the database; a failure doesn't undo the grant. */
+export async function sendAccessGrantedEmail(grantId: string): Promise<void> {
+  await invokeEdgeFunction<{ ok: true }>('send-access-granted', { grant_id: grantId })
+}
+
+/** Where the member-facing app keeps each service. */
+export const PAID_SERVICE_PATHS: Record<PaidService, string> = {
+  directory: '/directory',
+  business: '/business',
+  events: '/events',
+  matrimony: '/matrimony',
+}
+
+/** When a grant of `months` made now would end, mirroring
+ *  admin_grant_service_access: it starts where current access ends. */
+export function previewAccessEnd(currentEndsAt: string | null, months: AccessMonths): Date {
+  const now = new Date()
+  const current = currentEndsAt ? new Date(currentEndsAt) : null
+  const start = current && current > now ? current : now
+  const end = new Date(start)
+  end.setMonth(end.getMonth() + months)
+  // Postgres clamps 31 Jan + 1 month to 28 Feb; JS rolls over to 3 Mar.
+  if (end.getDate() !== start.getDate()) end.setDate(0)
+  return end
 }
 
 /** Super admin only. */

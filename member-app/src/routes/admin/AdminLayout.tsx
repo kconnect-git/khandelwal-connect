@@ -1,6 +1,8 @@
+import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAdmin } from '../../context/AdminContext'
 import { ADMIN_ROLE_LABELS } from '../../lib/admin'
+import { adminListServiceSettings } from '../../lib/serviceAccess'
 
 // Phase 5b-1: the console shell around every /admin/* page. The one UI admin
 // gate lives here (it used to be AdminApprovals'), so the pages under it can
@@ -13,6 +15,13 @@ import { ADMIN_ROLE_LABELS } from '../../lib/admin'
 //
 // (6a) Eight sections outgrew the sideways-scrolling pill row, so it is now
 // a sidebar from `md:` up and a "Section" dropdown on a phone.
+//
+// (11.2) Access carries a count of open access requests -- the only badge in
+// the nav, because a request is a member waiting on a reply. Refetched on
+// every navigation, and by pages through the outlet context after they
+// grant or dismiss.
+
+export type AdminOutletContext = { refreshAccessCount: () => void }
 
 const SECTIONS: { to: string; label: string; end?: boolean }[] = [
   { to: '/admin', label: 'Overview', end: true },
@@ -21,6 +30,7 @@ const SECTIONS: { to: string; label: string; end?: boolean }[] = [
   { to: '/admin/businesses', label: 'Businesses' },
   { to: '/admin/notices', label: 'Notices' },
   { to: '/admin/matrimony', label: 'Matrimony' },
+  { to: '/admin/access', label: 'Access' },
   { to: '/admin/audit', label: 'Audit log' },
   { to: '/admin/admins', label: 'Admins' },
 ]
@@ -37,6 +47,25 @@ export function AdminLayout() {
   const { role, isAdmin, loading } = useAdmin()
   const location = useLocation()
   const navigate = useNavigate()
+  const [accessCount, setAccessCount] = useState(0)
+
+  const refreshAccessCount = useCallback(() => {
+    adminListServiceSettings()
+      .then((rows) => setAccessCount(rows.reduce((sum, row) => sum + Number(row.open_requests), 0)))
+      .catch((err) => {
+        // Non-fatal: the badge just stays as it was.
+        console.error('[AdminLayout] failed to load access requests count', err)
+      })
+  }, [])
+
+  useEffect(() => {
+    if (isAdmin) refreshAccessCount()
+  }, [isAdmin, location.pathname, refreshAccessCount])
+
+  const sectionLabel = (section: (typeof SECTIONS)[number]) =>
+    section.to === '/admin/access' && accessCount > 0
+      ? `${section.label} (${accessCount})`
+      : section.label
 
   if (loading) {
     return (
@@ -85,7 +114,7 @@ export function AdminLayout() {
         >
           {SECTIONS.map((section) => (
             <option key={section.to} value={section.to}>
-              {section.label}
+              {sectionLabel(section)}
             </option>
           ))}
         </select>
@@ -107,7 +136,22 @@ export function AdminLayout() {
                     }`
                   }
                 >
-                  {section.label}
+                  {({ isActive }) => (
+                    <span className="flex items-center justify-between gap-2">
+                      {section.label}
+                      {section.to === '/admin/access' && accessCount > 0 && (
+                        <span
+                          className={`rounded-full px-1.5 text-xs font-semibold ${
+                            isActive
+                              ? 'bg-white text-[var(--color-accent)]'
+                              : 'bg-[var(--color-accent)] text-white'
+                          }`}
+                        >
+                          {accessCount > 99 ? '99+' : accessCount}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </NavLink>
               </li>
             ))}
@@ -115,7 +159,7 @@ export function AdminLayout() {
         </nav>
 
         <div className="min-w-0 flex-1">
-          <Outlet />
+          <Outlet context={{ refreshAccessCount } satisfies AdminOutletContext} />
         </div>
       </div>
     </div>

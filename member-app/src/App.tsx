@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate 
 import { ThemeProvider } from './context/ThemeContext'
 import { ProfileRefreshProvider, useProfileRefresh } from './context/ProfileRefreshContext'
 import { AdminProvider, useAdmin } from './context/AdminContext'
+import { ServiceAccessProvider } from './context/ServiceAccessContext'
 import { NoticesProvider } from './context/NoticesContext'
 import { MatrimonyProvider } from './context/MatrimonyContext'
 import { NoticeBell } from './components/NoticeBell'
@@ -49,6 +50,7 @@ import { AdminNotices } from './routes/admin/AdminNotices'
 import { AdminNoticeEditor } from './routes/admin/AdminNoticeEditor'
 import { AdminMatrimony } from './routes/admin/AdminMatrimony'
 import { AdminMatrimonyDetail } from './routes/admin/AdminMatrimonyDetail'
+import { AdminAccess } from './routes/admin/AdminAccess'
 import { MatrimonyHome } from './routes/matrimony/MatrimonyHome'
 import { MyMatrimonyProfile } from './routes/matrimony/MyMatrimonyProfile'
 import { MatrimonyInterests } from './routes/matrimony/MatrimonyInterests'
@@ -138,6 +140,7 @@ export default function App() {
           <AdminProvider>
             <NoticesProvider>
             <MatrimonyProvider>
+            <ServiceAccessProvider>
               <Layout>
                 <Routes>
                   <Route path="/" element={<RootRedirect />} />
@@ -411,6 +414,7 @@ export default function App() {
                     <Route path="notices/:id" element={<AdminNoticeEditor />} />
                     <Route path="matrimony" element={<AdminMatrimony />} />
                     <Route path="matrimony/:id" element={<AdminMatrimonyDetail />} />
+                    <Route path="access" element={<AdminAccess />} />
                     <Route path="audit" element={<AdminAudit />} />
                     <Route path="admins" element={<AdminAdmins />} />
                     <Route
@@ -420,6 +424,7 @@ export default function App() {
                   </Route>
                 </Routes>
               </Layout>
+            </ServiceAccessProvider>
             </MatrimonyProvider>
             </NoticesProvider>
           </AdminProvider>

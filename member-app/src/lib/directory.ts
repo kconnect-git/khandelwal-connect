@@ -12,6 +12,8 @@ export type DirectoryEntry = {
   occupation_type: string | null
   job_title: string | null
   company_name: string | null
+  /** (0035) Phase 11.3 paid badge. */
+  has_paid_badge: boolean
   total_count: number
 }
 
@@ -32,6 +34,8 @@ export type MemberProfile = {
   job_title: string | null
   company_name: string | null
   job_location: string | null
+  /** (0035) Phase 11.3 paid badge. */
+  has_paid_badge: boolean
 }
 
 export type DirectoryFilterOptions = {

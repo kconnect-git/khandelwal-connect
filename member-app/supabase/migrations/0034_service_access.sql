@@ -28,6 +28,9 @@
 --     All are audited with target_type 'person' (or none, for the switch)
 --     and action names prefixed 'access_' for the audit page's filter.
 --   * All three tables are RPC-only (RLS on, no policies).
+--   * Supabase grants execute on new functions to anon and authenticated
+--     directly. Helpers are revoked from both; the client RPCs are revoked
+--     from anon (signed-out callers have no use for them).
 --   * Admin user ids (granted_by, revoked_by, handled_by, updated_by) are
 --     auth user ids, like businesses.reviewed_by / verified_by.
 --
@@ -193,6 +196,7 @@ $$;
 
 revoke all on function my_service_access() from public;
 grant execute on function my_service_access() to authenticated;
+revoke execute on function my_service_access() from anon;
 
 -- "Request access". Allowed while the member already has access, so they
 -- can ask to renew before it runs out. One open request per service.
@@ -232,6 +236,7 @@ $$;
 
 revoke all on function request_service_access(text, text) from public;
 grant execute on function request_service_access(text, text) to authenticated;
+revoke execute on function request_service_access(text, text) from anon;
 
 -- ================================================================
 -- admin RPCs: reads
@@ -267,6 +272,7 @@ $$;
 
 revoke all on function admin_list_service_settings() from public;
 grant execute on function admin_list_service_settings() to authenticated;
+revoke execute on function admin_list_service_settings() from anon;
 
 -- The request queue. Open requests oldest first (it's a queue); granted /
 -- dismissed newest-handled first. email is the login email, so the admin
@@ -323,6 +329,7 @@ $$;
 
 revoke all on function admin_list_access_requests(text, text, int, int) from public;
 grant execute on function admin_list_access_requests(text, text, int, int) to authenticated;
+revoke execute on function admin_list_access_requests(text, text, int, int) from anon;
 
 -- Members holding access right now, one row per member + service, soonest
 -- to run out first. p_expiring_days narrows to those ending within N days.
@@ -374,6 +381,7 @@ $$;
 
 revoke all on function admin_list_service_access(text, int, int, int) from public;
 grant execute on function admin_list_service_access(text, int, int, int) to authenticated;
+revoke execute on function admin_list_service_access(text, int, int, int) from anon;
 
 -- One member's access per service, for the Access panel on member detail.
 -- has_grant is about grants only (not "service is off" or "is an admin").
@@ -407,6 +415,7 @@ $$;
 
 revoke all on function admin_member_access(uuid) from public;
 grant execute on function admin_member_access(uuid) to authenticated;
+revoke execute on function admin_member_access(uuid) from anon;
 
 -- Every grant a member has had, newest first.
 create or replace function admin_member_access_history(p_person_id uuid)
@@ -441,6 +450,7 @@ $$;
 
 revoke all on function admin_member_access_history(uuid) from public;
 grant execute on function admin_member_access_history(uuid) to authenticated;
+revoke execute on function admin_member_access_history(uuid) from anon;
 
 -- ================================================================
 -- admin RPCs: writes
@@ -525,6 +535,7 @@ $$;
 
 revoke all on function admin_grant_service_access(uuid, text, int, text) from public;
 grant execute on function admin_grant_service_access(uuid, text, int, text) to authenticated;
+revoke execute on function admin_grant_service_access(uuid, text, int, text) from anon;
 
 -- Take a service away now: revokes every live or queued grant for that
 -- member + service. Things the member already has keep working per the
@@ -576,6 +587,7 @@ $$;
 
 revoke all on function admin_revoke_service_access(uuid, text, text) from public;
 grant execute on function admin_revoke_service_access(uuid, text, text) to authenticated;
+revoke execute on function admin_revoke_service_access(uuid, text, text) from anon;
 
 -- Close a request without granting (didn't pay, duplicate, etc.). The
 -- member can ask again.
@@ -615,6 +627,7 @@ $$;
 
 revoke all on function admin_dismiss_access_request(uuid, text) from public;
 grant execute on function admin_dismiss_access_request(uuid, text) to authenticated;
+revoke execute on function admin_dismiss_access_request(uuid, text) from anon;
 
 -- Turn a service's paywall on or off. Super admin only.
 create or replace function admin_set_service_enforced(p_service text, p_enforced boolean)
@@ -657,6 +670,7 @@ $$;
 
 revoke all on function admin_set_service_enforced(text, boolean) from public;
 grant execute on function admin_set_service_enforced(text, boolean) to authenticated;
+revoke execute on function admin_set_service_enforced(text, boolean) from anon;
 
 -- ================================================================
 -- admin_overview_stats: + access_requests_open
@@ -694,6 +708,7 @@ $$;
 
 revoke all on function admin_overview_stats() from public;
 grant execute on function admin_overview_stats() to authenticated;
+revoke execute on function admin_overview_stats() from anon;
 
 -- ================================================================
 -- verification (run these after applying)
