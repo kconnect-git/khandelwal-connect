@@ -1,6 +1,6 @@
 # Events — Free vs Paid
 
-Status: **Decided** (2026-11-16). Not yet implemented.
+Status: **Built in Phase 11.6** (2026-11-17, migration `0038`). Live once a super admin turns the Events paywall on in /admin/access.
 
 Part of the paywall plan: every service gets a free tier and a paid tier.
 Events bring people into the community, so **attending is always free**; paid
@@ -25,6 +25,11 @@ Routes: `/events`, `/events/:id`, `/events/mine`, `/events/new`.
    possible paid feature.
 3. **Committee (samaj) events are always free for everyone** to view and join. An
    invite-only committee event is still limited by the invite, never by payment.
+
+## Added while building (11.6)
+
+- **Only creating is locked on the server** (`save_event`). Editing, cancelling and inviting already require the event's creator, so after a lapse a member keeps managing events they made. That was the suggested lapse rule, now confirmed.
+- **The "Create event" buttons stay visible.** The create page shows the Request access card in place of the form.
 
 ## Notes for implementation
 

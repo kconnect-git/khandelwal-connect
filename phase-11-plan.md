@@ -1,6 +1,6 @@
 # Phase 11 Plan — Paid Services (Access Add-ons)
 
-> **Status: in progress.** 11.1–11.5 ✅ built — see the `phase-11.N-summary.md` files.
+> **Status: in progress.** 11.1–11.6 ✅ built — see the `phase-11.N-summary.md` files.
 
 Phase 11 puts four services behind per-service monthly add-ons: **Directory, Business,
 Events and Matrimony**. Payment happens offline for now:
@@ -34,7 +34,7 @@ Migrations continue from `0034`.
 | **11.3** ✅ | Member side: "My access" in Profile, `<LockedFeature>` + Request access, paid badge, Home "access granted" card | 11.1 | `0035` |
 | **11.4** ✅ | Directory gating | 11.1, 11.3 | `0036` |
 | **11.5** ✅ | Business gating | 11.1, 11.3 | `0037` |
-| **11.6** | Events gating | 11.1, 11.3 | `0038` |
+| **11.6** ✅ | Events gating | 11.1, 11.3 | `0038` |
 | **11.7** | Matrimony gating | 11.1, 11.3 | `0039` |
 | **11.8** | Expiry reminder email (5 days before) | 11.2 | `0040` (schedule) |
 
@@ -125,7 +125,7 @@ Follows `business-paid-features.md`.
 - **Free for everyone:** listing a business, referrals, saves and reports.
 - **UI:** `<LockedFeature>` replaces the contact buttons, the Enquire button, Respond / Post in Buy & Sell, and the enquiries list on the dashboard.
 
-### 11.6 — Events gating (`0038`)
+### 11.6 — Events gating (`0038`) — ✅ built, see `phase-11.6-summary.md`
 
 Follows `events-paid-features.md`.
 - **Need access:** `create_event` and the invitee and email RPCs (`add_event_invitee`, `remove_event_invitee`, `send-event-invite`).

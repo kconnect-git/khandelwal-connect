@@ -2296,6 +2296,13 @@ begin
   if v_self_id is null then
     raise exception 'Complete your profile before creating an event';
   end if;
+  -- (0038) Creating events is part of Events access; admins (committee
+  -- events) always pass. Editing, cancelling and inviting to events you
+  -- already created stay open after a lapse.
+  if not has_service_access(v_self_id, 'events') then
+    raise exception using errcode = 'KCL04',
+      message = 'Creating events is part of Events access.';
+  end if;
 
   perform check_event_fields(p_title, p_starts_at, p_ends_at, p_capacity, p_visibility);
   if p_starts_at <= now() then
@@ -2315,6 +2322,7 @@ $$;
 
 revoke all on function save_event(text, text, timestamptz, timestamptz, text, text, text, int, text) from public;
 grant execute on function save_event(text, text, timestamptz, timestamptz, text, text, text, int, text) to authenticated;
+revoke execute on function save_event(text, text, timestamptz, timestamptz, text, text, text, int, text) from anon;
 
 -- Edit. Creator only.
 --   approved          -> only description changes; every other parameter is

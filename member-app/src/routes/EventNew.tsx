@@ -2,12 +2,18 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { EventForm } from '../components/events/EventForm'
 import { createEvent, EMPTY_EVENT_FORM, validateEvent, type EventFormValues } from '../lib/events'
+import { LockedFeature } from '../components/LockedFeature'
+import { useServiceAccess } from '../context/ServiceAccessContext'
 
 export function EventNew() {
   const navigate = useNavigate()
   const [form, setForm] = useState<EventFormValues>(EMPTY_EVENT_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // (11.6) Creating events is part of Events access (the server refuses
+  // too). Joining events, and editing ones you already made, stay free.
+  const { hasAccess } = useServiceAccess()
+  const locked = !hasAccess('events')
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -46,6 +52,13 @@ export function EventNew() {
         </p>
       </div>
 
+      {locked ? (
+        <LockedFeature
+          service="events"
+          title="Creating events is part of Events access"
+          description="Browsing and joining events stays free for everyone. With Events access you can create events and invite members."
+        />
+      ) : (
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <EventForm value={form} onChange={setForm} />
 
@@ -59,6 +72,7 @@ export function EventNew() {
           {saving ? 'Submitting…' : 'Submit for approval'}
         </button>
       </form>
+      )}
     </div>
   )
 }

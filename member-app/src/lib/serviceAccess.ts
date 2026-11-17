@@ -34,7 +34,7 @@ export const PAID_SERVICE_LABELS: Record<PaidService, string> = {
 export const PAYWALL_READY: Record<PaidService, boolean> = {
   directory: true,
   business: true,
-  events: false,
+  events: true,
   matrimony: false,
 }
 
