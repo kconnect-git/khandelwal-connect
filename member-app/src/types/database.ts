@@ -438,6 +438,8 @@ export type MatrimonyCardRow = {
   first_name: string | null
   last_initial: string | null
   age: number | null
+  /** (0039) Shown on cards once both genders can appear (paid browse). */
+  gender: string | null
   current_city: string | null
   current_state: string | null
   gotra: string | null
@@ -493,6 +495,9 @@ export type MatrimonyProfileView = Pick<
   /** (0025) The accepted interest, for un-matching. */
   match_interest_id: string | null
   contact: MatrimonyContact | null
+  /** (0039) Whether "Express interest" applies, and if not, why. */
+  can_express: boolean
+  express_blocker: 'no_profile' | 'same_gender' | 'no_access' | null
 }
 
 export type MatrimonyBox = 'received' | 'sent' | 'matches'
@@ -1465,6 +1470,11 @@ export type Database = {
           p_offset?: number
         }
         Returns: MatrimonyCardRow[]
+      }
+      // (0039)
+      matrimony_browse_count: {
+        Args: Record<PropertyKey, never>
+        Returns: number
       }
       matrimony_filter_options: {
         Args: Record<PropertyKey, never>

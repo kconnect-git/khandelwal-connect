@@ -33,7 +33,8 @@ export function InterestStatePill({ state }: { state: MatrimonyInterestState }) 
   )
 }
 
-export function MatrimonyCard({ row }: { row: MatrimonyCardRow }) {
+/** showGender: (11.7) set when the list mixes genders (paid browse). */
+export function MatrimonyCard({ row, showGender = false }: { row: MatrimonyCardRow; showGender?: boolean }) {
   const name = shortName(row)
   const place = [row.current_city, row.current_state].filter(Boolean).join(', ')
   const work = [row.education, row.occupation_type].filter(Boolean).join(' · ')
@@ -48,6 +49,9 @@ export function MatrimonyCard({ row }: { row: MatrimonyCardRow }) {
           <p className="font-medium">
             {name}
             {row.age !== null && <span className="text-[var(--color-text-muted)]">, {row.age}</span>}
+            {showGender && row.gender && (
+              <span className="text-[var(--color-text-muted)]"> · {row.gender}</span>
+            )}
           </p>
           <InterestStatePill state={row.interest_state} />
         </div>

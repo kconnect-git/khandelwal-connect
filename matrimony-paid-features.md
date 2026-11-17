@@ -1,6 +1,6 @@
 # Matrimony — Free vs Paid
 
-Status: **Decided** (2026-11-17). Not yet implemented.
+Status: **Built in Phase 11.7** (2026-11-17, migration `0039`). Live once a super admin turns the Matrimony paywall on in /admin/access.
 
 Part of the paywall plan: every service gets a free tier and a paid tier.
 Guiding rule here: **keep it simple — paid members see all profiles.**
@@ -40,6 +40,13 @@ Routes: `/matrimony`, `/matrimony/:id`, `/matrimony/profile`, `/matrimony/intere
    shown only after a match, paid or not.
 5. **Pending interest limit stays at 10** for everyone (not discussed further; keep
    simple).
+
+## Added while building (11.7)
+
+- **While the Matrimony paywall is OFF, today's rules stay exactly as they are:** a live profile browses the opposite gender, and you need a profile to look at anyone. "Paid sees both genders, with or without a profile" applies only once the paywall is ON. Otherwise applying the migration alone would have let everyone browse both genders.
+- **A free member pressing "Express interest" on someone who already sent them one** gets a match. That's accepting, which is free.
+- **A paid member without a live profile of their own** can browse and open profiles, but the page says "You need a live matrimony profile to send interest".
+- **Cards show gender** when the list mixes genders.
 
 ## Notes for implementation
 

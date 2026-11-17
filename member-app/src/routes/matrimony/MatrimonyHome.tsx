@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChipSelect } from '../../components/ChipSelect'
 import { MatrimonyCard } from '../../components/matrimony/MatrimonyCard'
+import { LockedFeature } from '../../components/LockedFeature'
+import { useServiceAccess } from '../../context/ServiceAccessContext'
 import { useMatrimony } from '../../context/MatrimonyContext'
 import { OCCUPATION_OPTIONS } from '../../lib/formOptions'
 import {
@@ -9,10 +11,16 @@ import {
   MATRIMONY_STATUS_LABELS,
   getMyMatrimony,
   listMatrimonyProfiles,
+  matrimonyBrowseCount,
   matrimonyFilterOptions,
   type MatrimonyFilters,
 } from '../../lib/matrimony'
-import type { MatrimonyCardRow, MatrimonyFilterOptions, MyMatrimony } from '../../types/database'
+import type {
+  MatrimonyCardRow,
+  MatrimonyFilterOptions,
+  MatrimonyStatus,
+  MyMatrimony,
+} from '../../types/database'
 
 // Phase 6a: the matrimony landing page. (6b) Once the member's own profile
 // is live it browses verified profiles of the opposite gender; until then
@@ -94,6 +102,8 @@ function Browse() {
   }
 
   const filtered = Object.values(debounced).some(Boolean)
+  // (11.7) Paid browse shows both genders; say which on each card then.
+  const mixedGenders = new Set(rows.map((row) => row.gender).filter(Boolean)).size > 1
   const hasMore = total !== null && rows.length < total
 
   return (
@@ -174,7 +184,7 @@ function Browse() {
           <ul className="flex flex-col gap-3">
             {rows.map((row) => (
               <li key={row.id}>
-                <MatrimonyCard row={row} />
+                <MatrimonyCard row={row} showGender={mixedGenders} />
               </li>
             ))}
           </ul>
@@ -194,11 +204,68 @@ function Browse() {
   )
 }
 
+/** (11.7) Paywall on, no Matrimony access: how many profiles there are, and
+ *  Request access. Answering interests stays free (Interests page). */
+function BrowseTeaser() {
+  const [count, setCount] = useState<number | null>(null)
+  useEffect(() => {
+    matrimonyBrowseCount()
+      .then(setCount)
+      .catch((err) => console.error('[MatrimonyHome] failed to load browse count', err))
+  }, [])
+  return (
+    <LockedFeature
+      service="matrimony"
+      title={
+        count === null
+          ? 'Browsing profiles is part of Matrimony access'
+          : `${count} ${count === 1 ? 'profile matches' : 'profiles match'} you`
+      }
+      description="With Matrimony access you can browse every verified profile and send interests. Replying to interests you receive is always free."
+    />
+  )
+}
+
+function ProfileLinkCard({
+  status,
+  ineligibleReason,
+  hint,
+}: {
+  status: MatrimonyStatus | undefined
+  ineligibleReason: string | null | undefined
+  hint?: string
+}) {
+  return (
+    <Link
+      to="/matrimony/profile"
+      className="flex items-center justify-between gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-4 hover:bg-[var(--color-surface-hover)] transition-colors"
+    >
+      <div>
+        <p className="font-medium">
+          {status ? 'My matrimony profile' : 'Create your matrimony profile'}
+        </p>
+        <p className="text-sm text-[var(--color-text-muted)]">
+          {ineligibleReason ??
+            (status ? MATRIMONY_STATUS_LABELS[status] : (hint ?? 'Takes a few minutes.'))}
+        </p>
+      </div>
+      <span aria-hidden="true" className="text-[var(--color-text-muted)]">
+        ›
+      </span>
+    </Link>
+  )
+}
+
 export function MatrimonyHome() {
   const { badgeCount } = useMatrimony()
   const [data, setData] = useState<MyMatrimony | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // (11.7) Matrimony paywall. Off: today's rule (a live profile browses).
+  // On: browsing needs Matrimony access, with or without a profile.
+  const { row: accessRow, hasAccess, loaded: accessLoaded } = useServiceAccess()
+  const enforced = accessRow('matrimony')?.enforced ?? false
+  const matrimonyAccess = hasAccess('matrimony')
 
   useEffect(() => {
     let cancelled = false
@@ -264,8 +331,24 @@ export function MatrimonyHome() {
 
       {error && <p className="text-sm text-[var(--color-accent)]">{error}</p>}
 
-      {loading ? (
+      {loading || !accessLoaded ? (
         <p className="text-sm text-[var(--color-text-muted)]">Loading…</p>
+      ) : enforced && matrimonyAccess ? (
+        <>
+          {!live && (
+            <ProfileLinkCard
+              status={status}
+              ineligibleReason={data?.ineligible_reason}
+              hint="You can browse now. Create a profile to send interests and be listed."
+            />
+          )}
+          <Browse />
+        </>
+      ) : enforced ? (
+        <>
+          <BrowseTeaser />
+          <ProfileLinkCard status={status} ineligibleReason={data?.ineligible_reason} />
+        </>
       ) : live ? (
         <Browse />
       ) : active ? (
@@ -278,23 +361,7 @@ export function MatrimonyHome() {
         </p>
       ) : (
         <>
-          <Link
-            to="/matrimony/profile"
-            className="flex items-center justify-between gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-4 hover:bg-[var(--color-surface-hover)] transition-colors"
-          >
-            <div>
-              <p className="font-medium">
-                {status ? 'My matrimony profile' : 'Create your matrimony profile'}
-              </p>
-              <p className="text-sm text-[var(--color-text-muted)]">
-                {data?.ineligible_reason ??
-                  (status ? MATRIMONY_STATUS_LABELS[status] : 'Takes a few minutes.')}
-              </p>
-            </div>
-            <span aria-hidden="true" className="text-[var(--color-text-muted)]">
-              ›
-            </span>
-          </Link>
+          <ProfileLinkCard status={status} ineligibleReason={data?.ineligible_reason} />
 
           <section className="flex flex-col gap-2">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">

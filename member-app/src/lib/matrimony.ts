@@ -242,6 +242,13 @@ export async function matrimonyFilterOptions(): Promise<MatrimonyFilterOptions> 
   return data ?? { states: [], cities: [] }
 }
 
+/** (11.7) "N profiles match you", for a member who can't browse yet. */
+export async function matrimonyBrowseCount(): Promise<number> {
+  const { data, error } = await supabase.rpc('matrimony_browse_count')
+  if (error) throw error
+  return data ?? 0
+}
+
 export async function getMatrimonyProfile(profileId: string): Promise<MatrimonyProfileView | null> {
   const { data, error } = await supabase.rpc('get_matrimony_profile', { p_profile_id: profileId })
   if (error) throw error

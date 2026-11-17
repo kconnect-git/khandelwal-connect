@@ -6,6 +6,8 @@ import { InterestStatePill } from '../../components/matrimony/MatrimonyCard'
 import { MatrimonyDetails } from '../../components/matrimony/MatrimonyDetails'
 import { ReportDialog } from '../../components/ReportDialog'
 import { useMatrimony } from '../../context/MatrimonyContext'
+import { LockedFeature } from '../../components/LockedFeature'
+import { useServiceAccess } from '../../context/ServiceAccessContext'
 import {
   INTEREST_MESSAGE_MAX,
   REPORT_REASON_OPTIONS,
@@ -45,6 +47,10 @@ function ContactRow({ label, value }: { label: string; value: React.ReactNode })
 }
 
 export function MatrimonyProfilePage() {
+  // (11.7) With the Matrimony paywall on, a member without access can only
+  // open profiles they have a pending interest with (or a match).
+  const { row: accessRow, hasAccess } = useServiceAccess()
+  const lockedOut = (accessRow('matrimony')?.enforced ?? false) && !hasAccess('matrimony')
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { refresh: refreshBadge } = useMatrimony()
@@ -109,9 +115,17 @@ export function MatrimonyProfilePage() {
     return (
       <div className="flex-1 flex flex-col gap-6 px-5 py-8 max-w-2xl mx-auto w-full">
         {backLink}
-        <p className="text-sm text-[var(--color-text-muted)]">
-          {error ?? 'This profile isn’t available.'}
-        </p>
+        {lockedOut && !error ? (
+          <LockedFeature
+            service="matrimony"
+            title="Viewing profiles is part of Matrimony access"
+            description="You can always open the profile of someone who sent you an interest, from Interests. With Matrimony access you can browse every profile and send interests."
+          />
+        ) : (
+          <p className="text-sm text-[var(--color-text-muted)]">
+            {error ?? 'This profile isn’t available.'}
+          </p>
+        )}
       </div>
     )
   }
@@ -152,14 +166,30 @@ export function MatrimonyProfilePage() {
             <p className="text-sm text-[var(--color-text-muted)]">
               Photos and contact details are shared only if you both say yes.
             </p>
-            <button
-              type="button"
-              className={`${ACCENT_BUTTON} self-start`}
-              disabled={busy}
-              onClick={() => setDialog('express')}
-            >
-              Express interest
-            </button>
+            {/* (11.7) can_express / express_blocker come from the server. */}
+            {profile.can_express ? (
+              <button
+                type="button"
+                className={`${ACCENT_BUTTON} self-start`}
+                disabled={busy}
+                onClick={() => setDialog('express')}
+              >
+                Express interest
+              </button>
+            ) : profile.express_blocker === 'no_access' ? (
+              <LockedFeature
+                service="matrimony"
+                title="Sending interest is part of Matrimony access."
+                compact
+              />
+            ) : profile.express_blocker === 'no_profile' ? (
+              <Link
+                to="/matrimony/profile"
+                className="self-start text-sm font-medium text-[var(--color-accent)] hover:underline"
+              >
+                You need a live matrimony profile to send interest ›
+              </Link>
+            ) : null}
           </>
         )}
         {profile.interest_state === 'sent' && (

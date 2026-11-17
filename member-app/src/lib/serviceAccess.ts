@@ -35,7 +35,7 @@ export const PAYWALL_READY: Record<PaidService, boolean> = {
   directory: true,
   business: true,
   events: true,
-  matrimony: false,
+  matrimony: true,
 }
 
 export const ACCESS_MONTH_OPTIONS: AccessMonths[] = [1, 3, 12]
