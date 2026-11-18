@@ -177,7 +177,8 @@ export function ProfileWizard() {
 
         triggerRefresh()
         // complete_onboarding_step3 also submits the profile for review
-        // (0019), so this lands on /pending via RootRedirect.
+        // (0019), so this lands on /pending via RootRedirect -- or on the
+        // dashboard when auto-approve is on (0041).
         navigate('/', { replace: true })
         return
       }

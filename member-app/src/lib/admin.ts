@@ -14,6 +14,7 @@ import type {
   AdminSearchMemberRow,
   AuditLogRow,
   EventStatus,
+  MemberApprovalSettings,
   MemberStatus,
 } from '../types/database'
 import { invokeEdgeFunction } from './edgeFunctions'
@@ -99,6 +100,20 @@ export async function adminSetMemberStatus(
     p_status: status,
     p_message: message?.trim() || null,
   })
+  if (error) throw error
+}
+
+/** (0041) The auto-approve switch. Any admin can read it; null if the
+ *  caller isn't an admin. */
+export async function adminMemberApprovalSettings(): Promise<MemberApprovalSettings | null> {
+  const { data, error } = await supabase.rpc('admin_member_approval_settings')
+  if (error) throw error
+  return data?.[0] ?? null
+}
+
+/** (0041) Super admin only (the RPC checks). */
+export async function adminSetMemberAutoApprove(enabled: boolean): Promise<void> {
+  const { error } = await supabase.rpc('admin_set_member_auto_approve', { p_enabled: enabled })
   if (error) throw error
 }
 
@@ -216,6 +231,9 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   member_approved: 'Approved member',
   member_info_requested: 'Asked for more information',
   member_rejected: 'Turned down member',
+  member_auto_approved: 'Auto-approved member',
+  member_auto_approve_on: 'Turned member auto-approval on',
+  member_auto_approve_off: 'Turned member auto-approval off',
   event_approved: 'Approved event',
   event_rejected: 'Rejected event',
   event_cancelled: 'Cancelled event',

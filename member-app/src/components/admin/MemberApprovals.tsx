@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Avatar } from '../Avatar'
 import { TabStrip } from '../TabStrip'
 import { DataTable } from './DataTable'
+import { AutoApproveSwitch } from './AutoApproveSwitch'
 import { adminListMembers } from '../../lib/admin'
 import { useAdmin } from '../../context/AdminContext'
 import { useMemberDecision } from '../../hooks/useMemberDecision'
@@ -121,6 +122,8 @@ export function MemberApprovals({ onChanged }: { onChanged?: () => void }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <AutoApproveSwitch canEdit={role === 'super_admin'} />
+
       <TabStrip
         tabs={TABS}
         active={status}

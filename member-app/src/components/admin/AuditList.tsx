@@ -62,7 +62,9 @@ export function AuditList({ rows, showTarget = true, empty }: AuditListProps) {
               </span>
             </div>
             <p className="text-xs text-[var(--color-text-muted)]">
-              by {row.admin_name ?? 'an admin without a member profile'}
+              {row.action === 'member_auto_approved'
+                ? 'automatically, on submission'
+                : `by ${row.admin_name ?? 'an admin without a member profile'}`}
             </p>
             {notes && <p className="text-sm whitespace-pre-line break-words">{notes}</p>}
           </li>

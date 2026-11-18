@@ -904,6 +904,13 @@ export type MyAccessNewsRow = {
   ends_at: string
 }
 
+/** The one row of admin_member_approval_settings() (0041). */
+export type MemberApprovalSettings = {
+  auto_approve: boolean
+  updated_at: string
+  updated_by_name: string | null
+}
+
 /** One row of admin_list_service_settings(). */
 export type AdminServiceSettingRow = {
   service: PaidService
@@ -1220,6 +1227,15 @@ export type Database = {
       }
       admin_set_service_enforced: {
         Args: { p_service: PaidService; p_enforced: boolean }
+        Returns: void
+      }
+      // (0041) Member auto-approval
+      admin_member_approval_settings: {
+        Args: Record<PropertyKey, never>
+        Returns: MemberApprovalSettings[]
+      }
+      admin_set_member_auto_approve: {
+        Args: { p_enabled: boolean }
         Returns: void
       }
       // (0032) Referrals

@@ -54,7 +54,10 @@ export function useProfileStatus(refreshKey?: unknown): ProfileStatus {
             try {
               const { data: code, error: rpcError } = await supabase.rpc('submit_for_review')
               if (!rpcError) {
-                person = {
+                // (0041) Re-read rather than assume 'pending': with
+                // auto-approve on, the RPC approves straight away.
+                const fresh = await getOwnPerson(session.user.id)
+                person = fresh ?? {
                   ...person,
                   member_code: code ?? person.member_code,
                   member_status: person.member_status === 'onboarding' ? 'pending' : person.member_status,
